@@ -123,6 +123,8 @@ MIAODA_APP_TYPE=3 MIAODA_LOCAL_DEV=1 npm run dev:client
 
 ## 环境变量
 
+> 首次使用请复制 `.env.example` 为 `.env`（或 `.env.local`）并按需修改；`.env` 已被 git 忽略，不会提交。
+
 | 变量 | 说明 | 本地开发 |
 |---|---|---|
 | `SUDA_DATABASE_URL` | PostgreSQL 连接串（平台注入） | `postgres://u:p@127.0.0.1:5432/db` |
