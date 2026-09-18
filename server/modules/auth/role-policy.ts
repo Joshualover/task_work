@@ -1,6 +1,13 @@
 /**
  * 角色访问策略：孩子账号只能访问下列接口，其余一律 403。
  */
+
+/** 孩子端页面路由（直接访问这些路径时放行，交给前端路由/视图渲染） */
+const CHILD_PAGES = ['/child-dashboard', '/child-points', '/child-rewards'];
+
+export function isChildPage(path: string): boolean {
+  return CHILD_PAGES.some((p) => path === p || path.startsWith(`${p}/`));
+}
 const CHILD_ALLOWED: Array<{ method: string; re: RegExp }> = [
   { method: 'GET', re: /^\/api\/auth\/(me|config)$/ },
   { method: 'POST', re: /^\/api\/auth\/logout$/ },

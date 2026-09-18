@@ -12,7 +12,10 @@ import {
   verifySession,
   type SessionPayload,
 } from './common/utils/session';
-import { isChildAllowed } from './modules/auth/role-policy';
+import { isChildAllowed, isChildPage } from './modules/auth/role-policy';
+
+// 静态资源（带扩展名，如 /assets/index-xxx.js、/favicon.svg）
+const STATIC_FILE_RE = /\.[a-z0-9]+$/i;
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
@@ -98,37 +101,39 @@ async function bootstrap() {
           );
         }
 
-        // 孩子账号：仅允许白名单接口，且只能操作自己的孩子
+        // 孩子账号：页面/静态资源放行，家长页面重定向，接口走白名单
         if (session.role === 'child') {
-          if (!isChildAllowed(req.method, req.path)) {
-            // ⚠️ 独立部署补丁：孩子账号直接访问家长页面路由（如 /children）时，
-            // 若返回 JSON 错误，前端会把 JSON 当 HTML 渲染 → 白屏且无导航可返回。
-            // 页面请求（非 /api/）改为 302 重定向到孩子端。
-            if (!req.path.startsWith('/api/')) {
-              res.redirect('/child-dashboard');
+          const path = req.path;
+
+          if (path.startsWith('/api/')) {
+            if (!isChildAllowed(req.method, path)) {
+              res.status(403).json({
+                error: {
+                  code: 'FORBIDDEN',
+                  message: '孩子账号无权访问该功能',
+                  timestamp: Date.now(),
+                },
+              });
               return;
             }
-            res.status(403).json({
-              error: {
-                code: 'FORBIDDEN',
-                message: '孩子账号无权访问该功能',
-                timestamp: Date.now(),
-              },
-            });
-            return;
-          }
-          const bodyChildId = (req.body as { childId?: string } | undefined)
-            ?.childId;
-          const provided =
-            (req.query?.childId as string | undefined) ?? bodyChildId;
-          if (provided && session.childId && provided !== session.childId) {
-            res.status(403).json({
-              error: {
-                code: 'FORBIDDEN',
-                message: '只能查看自己的数据',
-                timestamp: Date.now(),
-              },
-            });
+            const bodyChildId = (req.body as { childId?: string } | undefined)
+              ?.childId;
+            const provided =
+              (req.query?.childId as string | undefined) ?? bodyChildId;
+            if (provided && session.childId && provided !== session.childId) {
+              res.status(403).json({
+                error: {
+                  code: 'FORBIDDEN',
+                  message: '只能查看自己的数据',
+                  timestamp: Date.now(),
+                },
+              });
+              return;
+            }
+          } else if (!isChildPage(path) && !STATIC_FILE_RE.test(path)) {
+            // 直接访问家长页面路由（如 /children）→ 重定向到孩子端，
+            // 避免返回 JSON 被当成 HTML 渲染（白屏）
+            res.redirect('/child-dashboard');
             return;
           }
         }
