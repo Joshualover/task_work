@@ -6,6 +6,70 @@
 
 ---
 
+## ⚡ 上线 Checklist（复制粘贴版）
+
+**0. 前提**：1Panel 已安装；应用商店装好 PostgreSQL；运行环境装好 **Node 22+**。
+
+**1. 建库**：1Panel →「数据库 → PostgreSQL」新建库 `task_work`（记下密码）。
+
+**2. 克隆 + 装依赖 + 建表 + 构建**（1Panel 终端，整段复制；先改上面两个密码变量）：
+
+```bash
+set -e
+cd /opt
+git clone https://github.com/Joshualover/task_work.git
+cd task_work
+npm install --ignore-scripts
+
+# 建表（创建表 / 复合类型 / 平台角色，需超级用户）
+export SUPER_PWD='postgres超级用户密码'
+psql "postgres://postgres:${SUPER_PWD}@127.0.0.1:5432/task_work" \
+  -f server/database/migrations/local-dev-bootstrap.sql
+
+# 构建（⚠️ 必须带 MIAODA_APP_TYPE=3，否则生产白屏）
+MIAODA_APP_TYPE=3 npm run build:prod
+```
+
+**3. 写 `.env`**（整段复制，替换 `REPLACE_...`）：
+
+```bash
+cat > .env <<'ENV'
+NODE_ENV=production
+SUDA_DATABASE_URL=postgres://postgres:REPLACE_DB_PWD@127.0.0.1:5432/task_work
+FORCE_AUTHN_INNERAPI_DOMAIN=http://127.0.0.1:9
+STANDALONE_USER_ID=nas
+STANDALONE_USER_NAME=家长
+ENABLE_CSRF=false
+AI_SETTING_ENCRYPTION_KEY=REPLACE_WITH_32_CHAR_RANDOM
+BODY_SIZE_LIMIT=12mb
+SERVER_HOST=127.0.0.1
+SERVER_PORT=3000
+ENV
+```
+
+**4. 守护启动（PM2）**：
+
+```bash
+npm i -g pm2
+pm2 start ecosystem.config.js
+pm2 save
+pm2 startup   # 执行它输出的那条命令以配置开机自启
+```
+
+**5. 反向代理**：1Panel →「网站 → 创建网站 → 反向代理」→ 域名 `task.example.com` → `http://127.0.0.1:3000` → 开启 HTTPS。
+Nginx 需放开请求体：`client_max_body_size 20m;`（详见第 7 节）。
+
+**6. 验证**：
+
+```bash
+curl -s -o /dev/null -w "页面 %{http_code}\n" http://127.0.0.1:3000/
+curl -s http://127.0.0.1:3000/api/children
+```
+
+> **三个最常见的坑**：① 构建漏了 `MIAODA_APP_TYPE=3` → 白屏；② 没设 `ENABLE_CSRF=false` → 接口 403；③ Nginx 没放开 `client_max_body_size` → 传图 413。
+
+---
+
 ## 前置条件
 
 - 1Panel 已安装（含 Docker）。
