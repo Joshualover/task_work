@@ -108,7 +108,7 @@
             <Label class="text-sm font-medium text-[#1F2329]">用户名</Label>
             <Input
               v-model:value="registerForm.username"
-              placeholder="3-20 位字母、数字或下划线"
+              placeholder="2-20 位，支持中文/字母/数字/下划线"
               class="rounded-xl"
             />
           </div>
@@ -179,6 +179,7 @@ import Button from '@/components/ui/Button.vue';
 import Input from '@/components/ui/Input.vue';
 import Label from '@/components/ui/Label.vue';
 import { toast } from '@/components/ui/toast';
+import { getErrorMessage } from '@/utils/error';
 import { useAuthStore } from '@/stores/auth';
 
 type Tab = 'login' | 'register';
@@ -216,8 +217,7 @@ function switchTab(next: Tab): void {
 }
 
 function errorMessage(error: unknown): string {
-  const e = error as { response?: { data?: { message?: string } }; message?: string };
-  return e?.response?.data?.message || e?.message || '操作失败，请重试';
+  return getErrorMessage(error);
 }
 
 function redirectByRole(role: string): void {

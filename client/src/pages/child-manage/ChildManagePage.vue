@@ -216,7 +216,7 @@
           <Label class="text-sm font-medium text-[#1F2329]">用户名</Label>
           <Input
             v-model:value="accountForm.username"
-            placeholder="3-20 位字母、数字或下划线"
+            placeholder="2-20 位，支持中文/字母/数字/下划线"
             class="rounded-xl"
           />
         </div>
@@ -259,6 +259,7 @@ import { Plus, Pencil, Coins, UserPlus } from 'lucide-vue-next';
 import { childApi, authApi } from '@/api';
 import Button from '@/components/ui/Button.vue';
 import { toast } from '@/components/ui/toast';
+import { getErrorMessage } from '@/utils/error';
 import { useAuthStore } from '@/stores/auth';
 import Dialog from '@/components/ui/Dialog.vue';
 import Input from '@/components/ui/Input.vue';
@@ -348,8 +349,7 @@ async function handleSaveAccount(): Promise<void> {
     await fetchAccounts();
   } catch (error) {
     logger.error('保存孩子账号失败', error);
-    const e = error as { response?: { data?: { message?: string } } };
-    toast.error(e?.response?.data?.message || '保存失败，请重试');
+    toast.error(getErrorMessage(error, '保存失败，请重试'));
   } finally {
     accountSubmitting.value = false;
   }

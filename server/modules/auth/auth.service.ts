@@ -70,8 +70,11 @@ export class AuthService {
 
   private validateCredentials(username: string, password?: string): void {
     if (!username) throw new BadRequestException('用户名不能为空');
-    if (!/^[a-z0-9_]{3,20}$/.test(username)) {
-      throw new BadRequestException('用户名需为 3-20 位字母、数字或下划线');
+    // 允许中文/字母/数字/下划线，2-20 位（登录时统一转小写）
+    if (!/^[a-z0-9_\u4e00-\u9fa5]{2,20}$/.test(username)) {
+      throw new BadRequestException(
+        '用户名需为 2-20 位，支持中文/字母/数字/下划线',
+      );
     }
     if (!password || password.length < 6) {
       throw new BadRequestException('密码至少 6 位');

@@ -244,6 +244,7 @@ import Input from '@/components/ui/Input.vue';
 import Label from '@/components/ui/Label.vue';
 import Button from '@/components/ui/Button.vue';
 import { toast } from '@/components/ui/toast';
+import { getErrorMessage } from '@/utils/error';
 
 type UserMode = 'parent' | 'child';
 
@@ -319,8 +320,7 @@ async function handleChangePassword(): Promise<void> {
     pwdForm.oldPassword = '';
     pwdForm.newPassword = '';
   } catch (error) {
-    const e = error as { response?: { data?: { message?: string } } };
-    toast.error(e?.response?.data?.message || '修改失败，请重试');
+    toast.error(getErrorMessage(error, '修改失败，请重试'));
   } finally {
     pwdSubmitting.value = false;
   }
