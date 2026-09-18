@@ -47,6 +47,16 @@ async function bootstrap() {
     bodyLimit: process.env.BODY_SIZE_LIMIT || '12mb',
   });
 
+  // ⚠️ 独立部署补丁（NAS / 自有服务器）——项目更新后需重打：
+  // SDK 的 public-assets 中间件把 `assets/` 列入 PLATFORM_PREFIXES 跳过直出
+  // （平台环境 hashed 产物走 CDN），本地部署没有 CDN，导致 /assets/* 落到
+  // SPA fallback 返回 index.html → 浏览器把 HTML 当 JS 解析 → 白屏。
+  // 只接管 /assets/ 前缀：index.html 是 hbs 模板，必须留给 SDK 的 view engine
+  // 渲染（否则 {{appId}} / {{{__platform__}}} 不替换，前端 JSON.parse 报错）。
+  app.useStaticAssets(join(process.cwd(), 'dist/client/assets'), {
+    prefix: '/assets/',
+  });
+
   // 应用级登录（APP_LOGIN=true）：解析会话 → 注入平台身份头 → 按角色拦截。
   // 必须注册在 configureApp 之后（此时 cookieParser 已就绪）。
   if (appLoginEnabled) {
@@ -91,6 +101,13 @@ async function bootstrap() {
         // 孩子账号：仅允许白名单接口，且只能操作自己的孩子
         if (session.role === 'child') {
           if (!isChildAllowed(req.method, req.path)) {
+            // ⚠️ 独立部署补丁：孩子账号直接访问家长页面路由（如 /children）时，
+            // 若返回 JSON 错误，前端会把 JSON 当 HTML 渲染 → 白屏且无导航可返回。
+            // 页面请求（非 /api/）改为 302 重定向到孩子端。
+            if (!req.path.startsWith('/api/')) {
+              res.redirect('/child-dashboard');
+              return;
+            }
             res.status(403).json({
               error: {
                 code: 'FORBIDDEN',
