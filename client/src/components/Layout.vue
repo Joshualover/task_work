@@ -11,7 +11,7 @@
         >
           <Coins class="h-5 w-5" />
         </div>
-        <span class="text-xl font-bold text-[#1F2329]">积分小管家</span>
+        <span class="text-xl font-bold text-[#1F2329]">小学生任务积分系统</span>
       </div>
 
       <!-- Mode Switch & Child Selector -->
