@@ -1,5 +1,6 @@
 import { APP_FILTER } from '@nestjs/core';
 import { Module } from '@nestjs/common';
+import { config as loadEnv } from 'dotenv';
 import { PlatformModule } from '@lark-apaas/fullstack-nestjs-core';
 
 import { GlobalExceptionFilter } from './common/filters/exception.filter';import { ViewModule } from './modules/view/view.module';
@@ -11,6 +12,11 @@ import { RewardModule } from './modules/reward/reward.module';
 import { RedemptionModule } from './modules/redemption/redemption.module';
 import { AiModule } from './modules/ai/ai.module';
 import { ReportModule } from './modules/report/report.module';
+
+// 提前加载 .env：下方 PlatformModule.forRoot 的配置在“模块装饰器求值”时读取 process.env，
+// 而 Nest 的 ConfigModule 要到 AppModule 初始化阶段才加载 .env，时机偏晚。
+// 独立部署时 ENABLE_CSRF 等配置写在 .env 里也能生效。
+loadEnv();
 
 @Module({
   imports: [

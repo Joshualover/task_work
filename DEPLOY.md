@@ -62,6 +62,8 @@ npm install --ignore-scripts
 cp .env.example .env
 ```
 
+> 应用启动时会**自动加载工作目录下的 `.env`**（已内置提前加载，`ENABLE_CSRF` / `STANDALONE_USER_ID` 等都生效），因此 PM2 / systemd / 1Panel 里不必重复配置。
+
 `.env` 关键内容：
 
 ```env
@@ -120,23 +122,89 @@ MIAODA_APP_TYPE=3 npm run build:prod
 - 端口：`3000`
 - 环境变量：可直接读 `.env`，或在面板里逐条配置
 
-**方式 B：PM2**
+**方式 B：PM2（推荐，自带开机自启）**
+
+仓库已提供 `ecosystem.config.js`：
 
 ```bash
 npm i -g pm2
-pm2 start dist/server/main.js --name task-work
-pm2 save && pm2 startup
+pm2 start ecosystem.config.js      # 使用仓库内置配置（cwd=项目根，自动读 .env）
+pm2 save
+pm2 startup                        # 按提示执行输出的命令，配置开机自启
+pm2 logs task-work                 # 查看日志
 ```
+
+常用：`pm2 restart task-work`、`pm2 stop task-work`、`pm2 status`。
+
+**方式 C：systemd（不用 PM2 时）**
+
+新建 `/etc/systemd/system/task-work.service`：
+
+```ini
+[Unit]
+Description=Task Work (NestJS)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/task_work
+ExecStart=/usr/bin/node dist/server/main.js
+Restart=always
+RestartSec=3
+Environment=NODE_ENV=production
+# 应用会自动加载工作目录下的 .env；若不用 .env 可在此显式声明：
+# Environment=SUDA_DATABASE_URL=postgres://postgres:password@127.0.0.1:5432/task_work
+# Environment=FORCE_AUTHN_INNERAPI_DOMAIN=http://127.0.0.1:9
+# Environment=STANDALONE_USER_ID=nas
+# Environment=ENABLE_CSRF=false
+# Environment=AI_SETTING_ENCRYPTION_KEY=请替换
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+systemctl daemon-reload
+systemctl enable --now task-work
+systemctl status task-work
+journalctl -u task-work -f
+```
+
+> `ExecStart` 里的 `node` 路径用 `which node` 的结果替换。
 
 ### 7. 反向代理 / HTTPS
 
-1Panel「网站 → 创建网站 → 反向代理」：
+1Panel「网站 → 创建网站 → 反向代理」：域名如 `task.example.com`，代理地址 `http://127.0.0.1:3000`，并开启 HTTPS（Let's Encrypt）。
 
-- 域名：如 `task.example.com`
-- 代理地址：`http://127.0.0.1:3000`
-- 建议开启 HTTPS（Let's Encrypt）
+若要手写 Nginx（1Panel 的 OpenResty）配置，参考：
 
-无需额外注入请求头（已关闭 CSRF）。
+```nginx
+server {
+    listen 80;
+    server_name task.example.com;
+
+    # ⚠️ 图片识别以 base64 上传，必须放开请求体限制（与 BODY_SIZE_LIMIT 匹配）
+    client_max_body_size 20m;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # AI 识别单次可能 30s+，适度放宽超时
+        proxy_connect_timeout 15s;
+        proxy_send_timeout    180s;
+        proxy_read_timeout    180s;
+    }
+}
+```
+
+> 关键：`client_max_body_size` 必须放开，否则上传照片会在 Nginx 层被 413 拦下（到不了应用）。
+> 无需注入任何身份 / CSRF 头（独立部署已在应用层处理）。
 
 ### 8. 首次使用
 
