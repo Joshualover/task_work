@@ -1,9 +1,37 @@
 import { Inject, Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
-import { eq, asc, and } from 'drizzle-orm';
+import { eq, asc, and, gte, lt, inArray } from 'drizzle-orm';
 
-import { reward } from '@server/database/schema';
-import type { CreateRewardRequest, UpdateRewardRequest } from '@shared/api.interface';
+import { reward, redemption } from '@server/database/schema';
+import { periodRangeUtc } from '@server/common/utils/date';
+import type {
+  CreateRewardRequest,
+  UpdateRewardRequest,
+  RewardFrequency,
+  RewardUsage,
+} from '@shared/api.interface';
+
+export interface RewardRow {
+  id: string;
+  familyId: string;
+  name: string;
+  pointsRequired: number;
+  description: string | null;
+  imageUrl: string | null;
+  isActive: boolean;
+  sortOrder: number;
+  frequency: RewardFrequency;
+  limitCount: number | null;
+  limitPoints: number | null;
+  createdAt: Date;
+}
+
+const FREQUENCIES: RewardFrequency[] = [
+  'unlimited',
+  'daily',
+  'weekly',
+  'monthly',
+];
 
 @Injectable()
 export class RewardService {
@@ -13,20 +41,47 @@ export class RewardService {
     @Inject(DRIZZLE_DATABASE) private readonly db: PostgresJsDatabase,
   ) {}
 
+  private mapReward(row: typeof reward.$inferSelect): RewardRow {
+    return {
+      id: row.id,
+      familyId: row.familyId,
+      name: row.name,
+      pointsRequired: row.pointsRequired,
+      description: row.description,
+      imageUrl: row.imageUrl,
+      isActive: row.isActive,
+      sortOrder: row.sortOrder,
+      frequency: (row.frequency ?? 'unlimited') as RewardFrequency,
+      limitCount: row.limitCount ?? null,
+      limitPoints: row.limitPoints ?? null,
+      createdAt: row.createdAt,
+    };
+  }
+
+  private normalizeFrequency(value?: string): RewardFrequency {
+    if (!value) return 'unlimited';
+    if (!FREQUENCIES.includes(value as RewardFrequency)) {
+      throw new BadRequestException('兑奖频率不合法');
+    }
+    return value as RewardFrequency;
+  }
+
+  private normalizeLimit(
+    value: number | null | undefined,
+    label: string,
+  ): number | null {
+    if (value === undefined || value === null) return null;
+    const n = Number(value);
+    if (!Number.isFinite(n) || n <= 0) {
+      throw new BadRequestException(`${label}必须为正整数`);
+    }
+    return Math.floor(n);
+  }
+
   async listRewards(
     familyId: string,
     includeInactive = false,
-  ): Promise<Array<{
-    id: string;
-    familyId: string;
-    name: string;
-    pointsRequired: number;
-    description: string | null;
-    imageUrl: string | null;
-    isActive: boolean;
-    sortOrder: number;
-    createdAt: Date;
-  }>> {
+  ): Promise<RewardRow[]> {
     const conditions = [eq(reward.familyId, familyId)];
     if (!includeInactive) {
       conditions.push(eq(reward.isActive, true));
@@ -38,30 +93,10 @@ export class RewardService {
       .where(and(...conditions))
       .orderBy(asc(reward.sortOrder), asc(reward.createdAt));
 
-    return results.map((r) => ({
-      id: r.id,
-      familyId: r.familyId,
-      name: r.name,
-      pointsRequired: r.pointsRequired,
-      description: r.description,
-      imageUrl: r.imageUrl,
-      isActive: r.isActive,
-      sortOrder: r.sortOrder,
-      createdAt: r.createdAt,
-    }));
+    return results.map((r) => this.mapReward(r));
   }
 
-  async getReward(rewardId: string): Promise<{
-    id: string;
-    familyId: string;
-    name: string;
-    pointsRequired: number;
-    description: string | null;
-    imageUrl: string | null;
-    isActive: boolean;
-    sortOrder: number;
-    createdAt: Date;
-  }> {
+  async getReward(rewardId: string): Promise<RewardRow> {
     const result = await this.db
       .select()
       .from(reward)
@@ -71,41 +106,22 @@ export class RewardService {
     if (result.length === 0) {
       throw new NotFoundException('奖励不存在');
     }
-
-    const r = result[0];
-    return {
-      id: r.id,
-      familyId: r.familyId,
-      name: r.name,
-      pointsRequired: r.pointsRequired,
-      description: r.description,
-      imageUrl: r.imageUrl,
-      isActive: r.isActive,
-      sortOrder: r.sortOrder,
-      createdAt: r.createdAt,
-    };
+    return this.mapReward(result[0]);
   }
 
   async createReward(
     familyId: string,
     data: CreateRewardRequest,
-  ): Promise<{
-    id: string;
-    familyId: string;
-    name: string;
-    pointsRequired: number;
-    description: string | null;
-    imageUrl: string | null;
-    isActive: boolean;
-    sortOrder: number;
-    createdAt: Date;
-  }> {
+  ): Promise<RewardRow> {
     if (!data.name || data.name.trim().length === 0) {
       throw new BadRequestException('奖励名称不能为空');
     }
     if (data.pointsRequired <= 0) {
       throw new BadRequestException('所需积分数必须为正数');
     }
+
+    const frequency = this.normalizeFrequency(data.frequency);
+    const unlimited = frequency === 'unlimited';
 
     const inserted = await this.db
       .insert(reward)
@@ -116,40 +132,26 @@ export class RewardService {
         description: data.description ?? null,
         imageUrl: data.imageUrl ?? null,
         sortOrder: data.sortOrder ?? 0,
+        frequency,
+        limitCount: unlimited
+          ? null
+          : this.normalizeLimit(data.limitCount, '兑换次数上限'),
+        limitPoints: unlimited
+          ? null
+          : this.normalizeLimit(data.limitPoints, '积分上限'),
       })
       .returning();
 
     const r = inserted[0];
     this.logger.log(`创建奖励 familyId=${familyId} rewardId=${r.id} name=${r.name}`);
 
-    return {
-      id: r.id,
-      familyId: r.familyId,
-      name: r.name,
-      pointsRequired: r.pointsRequired,
-      description: r.description,
-      imageUrl: r.imageUrl,
-      isActive: r.isActive,
-      sortOrder: r.sortOrder,
-      createdAt: r.createdAt,
-    };
+    return this.mapReward(r);
   }
 
   async updateReward(
     rewardId: string,
     data: UpdateRewardRequest,
-  ): Promise<{
-    id: string;
-    familyId: string;
-    name: string;
-    pointsRequired: number;
-    description: string | null;
-    imageUrl: string | null;
-    isActive: boolean;
-    sortOrder: number;
-    createdAt: Date;
-  }> {
-    // 先确认存在
+  ): Promise<RewardRow> {
     const existing = await this.db
       .select()
       .from(reward)
@@ -186,9 +188,28 @@ export class RewardService {
     if (data.sortOrder !== undefined) {
       patch.sortOrder = data.sortOrder;
     }
+    if (data.frequency !== undefined) {
+      patch.frequency = this.normalizeFrequency(data.frequency);
+    }
+    if (data.limitCount !== undefined) {
+      patch.limitCount = this.normalizeLimit(data.limitCount, '兑换次数上限');
+    }
+    if (data.limitPoints !== undefined) {
+      patch.limitPoints = this.normalizeLimit(data.limitPoints, '积分上限');
+    }
 
     if (Object.keys(patch).length === 0) {
       throw new BadRequestException('未提供可更新字段');
+    }
+
+    // 频率为不限时，清空额度限制
+    const effectiveFrequency = (patch.frequency ??
+      existing[0].frequency ??
+      'unlimited') as RewardFrequency;
+    if (effectiveFrequency === 'unlimited') {
+      patch.frequency = 'unlimited';
+      patch.limitCount = null;
+      patch.limitPoints = null;
     }
 
     const updated = await this.db
@@ -197,20 +218,8 @@ export class RewardService {
       .where(eq(reward.id, rewardId))
       .returning();
 
-    const r = updated[0];
     this.logger.log(`更新奖励 rewardId=${rewardId}`);
-
-    return {
-      id: r.id,
-      familyId: r.familyId,
-      name: r.name,
-      pointsRequired: r.pointsRequired,
-      description: r.description,
-      imageUrl: r.imageUrl,
-      isActive: r.isActive,
-      sortOrder: r.sortOrder,
-      createdAt: r.createdAt,
-    };
+    return this.mapReward(updated[0]);
   }
 
   async deleteReward(rewardId: string): Promise<void> {
@@ -224,5 +233,41 @@ export class RewardService {
     }
 
     this.logger.log(`删除奖励 rewardId=${rewardId}`);
+  }
+
+  /** 某孩子在当前周期内对各奖励的兑换用量（仅返回设置了限制的奖励） */
+  async getUsage(familyId: string, childId: string): Promise<RewardUsage[]> {
+    const rewards = (await this.listRewards(familyId, false)).filter(
+      (r) => r.frequency !== 'unlimited',
+    );
+
+    const items: RewardUsage[] = [];
+    for (const rw of rewards) {
+      const range = periodRangeUtc(rw.frequency as 'daily' | 'weekly' | 'monthly');
+      const rows = await this.db
+        .select({ pointsCost: redemption.pointsCost })
+        .from(redemption)
+        .where(
+          and(
+            eq(redemption.childId, childId),
+            eq(redemption.rewardId, rw.id),
+            inArray(redemption.status, ['pending', 'approved']),
+            gte(redemption.createdAt, range.start),
+            lt(redemption.createdAt, range.end),
+          ),
+        );
+
+      items.push({
+        rewardId: rw.id,
+        frequency: rw.frequency,
+        count: rows.length,
+        points: rows.reduce((sum, r) => sum + r.pointsCost, 0),
+        limitCount: rw.limitCount,
+        limitPoints: rw.limitPoints,
+        periodStart: range.startDate,
+        periodEnd: range.endDate,
+      });
+    }
+    return items;
   }
 }

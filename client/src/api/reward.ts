@@ -4,19 +4,8 @@ import type {
   CreateRewardRequest,
   UpdateRewardRequest,
   Reward,
+  RewardUsageResponse,
 } from '@shared/api.interface';
-
-interface RewardResponse {
-  id: string;
-  familyId: string;
-  name: string;
-  pointsRequired: number;
-  description: string | null;
-  imageUrl: string | null;
-  isActive: boolean;
-  sortOrder: number;
-  createdAt: string;
-}
 
 export async function listRewards(includeInactive = false): Promise<RewardListResponse> {
   const response = await apiClient.get<RewardListResponse>(
@@ -25,58 +14,30 @@ export async function listRewards(includeInactive = false): Promise<RewardListRe
   return response.data;
 }
 
+/** 某孩子在当前周期内对各奖励的兑换用量 */
+export async function getUsage(childId: string): Promise<RewardUsageResponse> {
+  const response = await apiClient.get<RewardUsageResponse>('/api/rewards/usage', {
+    params: { childId },
+  });
+  return response.data;
+}
+
 export async function getReward(id: string): Promise<Reward> {
-  const response = await apiClient.get<RewardResponse>(`/api/rewards/${id}`);
-  const r = response.data;
-  return {
-    id: r.id,
-    familyId: r.familyId,
-    name: r.name,
-    pointsRequired: r.pointsRequired,
-    description: r.description,
-    imageUrl: r.imageUrl,
-    isActive: r.isActive,
-    sortOrder: r.sortOrder,
-    createdAt: r.createdAt,
-  };
+  const response = await apiClient.get<Reward>(`/api/rewards/${id}`);
+  return response.data;
 }
 
 export async function createReward(data: CreateRewardRequest): Promise<Reward> {
-  const response = await apiClient.post<RewardResponse>('/api/rewards', data);
-  const r = response.data;
-  return {
-    id: r.id,
-    familyId: r.familyId,
-    name: r.name,
-    pointsRequired: r.pointsRequired,
-    description: r.description,
-    imageUrl: r.imageUrl,
-    isActive: r.isActive,
-    sortOrder: r.sortOrder,
-    createdAt: r.createdAt,
-  };
+  const response = await apiClient.post<Reward>('/api/rewards', data);
+  return response.data;
 }
 
 export async function updateReward(
   id: string,
   data: UpdateRewardRequest,
 ): Promise<Reward> {
-  const response = await apiClient.patch<RewardResponse>(
-    `/api/rewards/${id}`,
-    data,
-  );
-  const r = response.data;
-  return {
-    id: r.id,
-    familyId: r.familyId,
-    name: r.name,
-    pointsRequired: r.pointsRequired,
-    description: r.description,
-    imageUrl: r.imageUrl,
-    isActive: r.isActive,
-    sortOrder: r.sortOrder,
-    createdAt: r.createdAt,
-  };
+  const response = await apiClient.patch<Reward>(`/api/rewards/${id}`, data);
+  return response.data;
 }
 
 export async function deleteReward(id: string): Promise<{ ok: boolean }> {

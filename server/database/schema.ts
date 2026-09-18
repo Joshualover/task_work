@@ -287,6 +287,12 @@ export const reward = pgTable("reward", {
   imageUrl: text("image_url"),
   isActive: boolean("is_active").notNull().default(true),
   sortOrder: integer("sort_order").notNull().default(0),
+  // 兑奖频率与额度：unlimited | daily | weekly | monthly
+  frequency: varchar("frequency", { length: 20 }).notNull().default('unlimited'),
+  // 每个周期内的兑换次数上限（null = 不限）
+  limitCount: integer("limit_count"),
+  // 每个周期内可消耗的积分上限（null = 不限）
+  limitPoints: integer("limit_points"),
   // System field: Creation time (auto-filled, do not modify)
   createdAt: customTimestamptz("_created_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
   // System field: Creator (auto-filled, do not modify)

@@ -7,11 +7,13 @@ import {
 import Button from '@/components/ui/Button.vue';
 import Dialog from '@/components/ui/Dialog.vue';
 import Input from '@/components/ui/Input.vue';
+import Select from '@/components/ui/Select.vue';
 import { rewardApi, pointApi, redemptionApi } from '@/api';
 import { useChildStore } from '@/stores/child';
-import type { Reward } from '@shared/api.interface';
+import type { Reward, RewardUsage } from '@shared/api.interface';
 import Image from '@/components/ui/Image.vue';
 import { toast } from '@/components/ui/toast';
+import { getErrorMessage } from '@/utils/error';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 
 const props = withDefaults(defineProps<{
@@ -26,7 +28,17 @@ interface RewardFormData {
   description: string;
   imageUrl: string;
   sortOrder: string;
+  frequency: 'unlimited' | 'daily' | 'weekly' | 'monthly';
+  limitCount: string;
+  limitPoints: string;
 }
+
+const FREQUENCY_OPTIONS = [
+  { value: 'unlimited', label: '不限' },
+  { value: 'daily', label: '每天' },
+  { value: 'weekly', label: '每周' },
+  { value: 'monthly', label: '每月' },
+];
 
 const childStore = useChildStore();
 const currentChild = computed(() => childStore.currentChild);
@@ -43,7 +55,11 @@ const formData = reactive<RewardFormData>({
   description: '',
   imageUrl: '',
   sortOrder: '',
+  frequency: 'unlimited',
+  limitCount: '',
+  limitPoints: '',
 });
+const usageMap = ref<Record<string, RewardUsage>>({});
 const submitting = ref<boolean>(false);
 const redeemLoading = ref<string | null>(null);
 const confirmRedeem = ref<Reward | null>(null);
@@ -73,18 +89,36 @@ const fetchBalance = async () => {
   }
 };
 
+const fetchUsage = async () => {
+  if (props.mode !== 'child' || !childId.value) {
+    usageMap.value = {};
+    return;
+  }
+  try {
+    const result = await rewardApi.getUsage(childId.value);
+    const map: Record<string, RewardUsage> = {};
+    for (const item of result.items) map[item.rewardId] = item;
+    usageMap.value = map;
+  } catch (error) {
+    logger.error('获取奖励兑换用量失败', error);
+  }
+};
+
 onMounted(() => {
   void fetchRewards();
   void fetchBalance();
+  void fetchUsage();
 });
 
 watch(() => props.mode, () => {
   void fetchRewards();
   void fetchBalance();
+  void fetchUsage();
 });
 
 watch(childId, () => {
   void fetchBalance();
+  void fetchUsage();
 });
 
 const openCreateDialog = () => {
@@ -94,6 +128,9 @@ const openCreateDialog = () => {
   formData.description = '';
   formData.imageUrl = '';
   formData.sortOrder = '';
+  formData.frequency = 'unlimited';
+  formData.limitCount = '';
+  formData.limitPoints = '';
   dialogOpen.value = true;
 };
 
@@ -104,6 +141,9 @@ const openEditDialog = (reward: Reward) => {
   formData.description = reward.description || '';
   formData.imageUrl = reward.imageUrl || '';
   formData.sortOrder = String(reward.sortOrder);
+  formData.frequency = reward.frequency ?? 'unlimited';
+  formData.limitCount = reward.limitCount != null ? String(reward.limitCount) : '';
+  formData.limitPoints = reward.limitPoints != null ? String(reward.limitPoints) : '';
   dialogOpen.value = true;
 };
 
@@ -115,6 +155,7 @@ const handleSubmit = async () => {
 
   submitting.value = true;
   try {
+    const unlimited = formData.frequency === 'unlimited';
     const payload = {
       name: formData.name.trim(),
       pointsRequired: points,
@@ -123,6 +164,15 @@ const handleSubmit = async () => {
       sortOrder: formData.sortOrder
         ? parseInt(formData.sortOrder, 10)
         : undefined,
+      frequency: formData.frequency,
+      limitCount:
+        unlimited || !formData.limitCount
+          ? null
+          : parseInt(formData.limitCount, 10),
+      limitPoints:
+        unlimited || !formData.limitPoints
+          ? null
+          : parseInt(formData.limitPoints, 10),
     };
 
     if (editingReward.value) {
@@ -133,8 +183,10 @@ const handleSubmit = async () => {
 
     dialogOpen.value = false;
     await fetchRewards();
+    await fetchUsage();
   } catch (error) {
     logger.error('保存奖励失败', error);
+    toast.error(getErrorMessage(error, '保存失败，请重试'));
   } finally {
     submitting.value = false;
   }
@@ -175,19 +227,64 @@ const handleRedeem = async (reward: Reward) => {
     });
     confirmRedeem.value = null;
     await fetchBalance();
+    await fetchUsage();
     logger.info(`兑换申请提交成功: ${reward.name}`);
     toast(`兑换申请已提交，等待家长审核！\n消耗 ${reward.pointsRequired} 积分`);
   } catch (error) {
     logger.error('兑换失败', error);
-    const errMsg = error instanceof Error ? error.message : '兑换失败，请稍后重试';
-    toast(errMsg);
+    toast.error(getErrorMessage(error, '兑换失败，请稍后重试'));
   } finally {
     redeemLoading.value = null;
   }
 };
 
+const FREQ_LABEL: Record<string, string> = {
+  unlimited: '不限',
+  daily: '每天',
+  weekly: '每周',
+  monthly: '每月',
+};
+
+/** 奖励的限额说明，如「每周：最多 2 次，最多 50 积分」 */
+const limitSummary = (reward: Reward): string => {
+  if (!reward.frequency || reward.frequency === 'unlimited') return '';
+  const parts: string[] = [];
+  if (reward.limitCount != null) parts.push(`最多 ${reward.limitCount} 次`);
+  if (reward.limitPoints != null) parts.push(`最多 ${reward.limitPoints} 积分`);
+  const head = FREQ_LABEL[reward.frequency] ?? '';
+  return parts.length ? `${head}：${parts.join('，')}` : head;
+};
+
+/** 孩子端：本期已用情况，如「本期已 1/2 次」 */
+const usageSummary = (reward: Reward): string => {
+  const u = usageMap.value[reward.id];
+  if (!u) return '';
+  const parts: string[] = [];
+  if (u.limitCount != null) parts.push(`${u.count}/${u.limitCount} 次`);
+  if (u.limitPoints != null) parts.push(`${u.points}/${u.limitPoints} 积分`);
+  return parts.length ? `本期已用 ${parts.join('，')}` : '';
+};
+
+/** 是否已触发限额；返回提示文案（null = 未触发） */
+const limitReached = (reward: Reward): string | null => {
+  const u = usageMap.value[reward.id];
+  if (!u) return null;
+  if (u.limitCount != null && u.count >= u.limitCount) {
+    return `本期兑换次数已达上限（${u.count}/${u.limitCount}）`;
+  }
+  if (
+    u.limitPoints != null &&
+    u.points + reward.pointsRequired > u.limitPoints
+  ) {
+    return `本期积分额度不足（已用 ${u.points}/${u.limitPoints}）`;
+  }
+  return null;
+};
+
 const canRedeem = (reward: Reward): boolean => {
-  return childBalance.value >= reward.pointsRequired;
+  return (
+    childBalance.value >= reward.pointsRequired && limitReached(reward) === null
+  );
 };
 
 const pointsShortage = (reward: Reward): number => {
@@ -264,6 +361,43 @@ const handleConfirmRedeemOpenChange = (open: boolean) => {
                 placeholder="https://..."
                 v-model:value="formData.imageUrl"
               />
+            </div>
+            <div>
+              <label class="mb-1 block text-sm font-medium text-gray-700">
+                兑奖频率
+              </label>
+              <Select
+                v-model:modelValue="formData.frequency"
+                :options="FREQUENCY_OPTIONS"
+              />
+              <p class="mt-1 text-xs text-gray-400">
+                限制孩子在一段时间内兑换该奖励的次数 / 积分；「不限」表示不限制
+              </p>
+            </div>
+            <div
+              v-if="formData.frequency !== 'unlimited'"
+              class="grid grid-cols-2 gap-3"
+            >
+              <div>
+                <label class="mb-1 block text-sm font-medium text-gray-700">
+                  次数上限
+                </label>
+                <Input
+                  type="number"
+                  placeholder="留空不限"
+                  v-model:value="formData.limitCount"
+                />
+              </div>
+              <div>
+                <label class="mb-1 block text-sm font-medium text-gray-700">
+                  积分上限
+                </label>
+                <Input
+                  type="number"
+                  placeholder="留空不限"
+                  v-model:value="formData.limitPoints"
+                />
+              </div>
             </div>
             <div>
               <label class="mb-1 block text-sm font-medium text-gray-700">
@@ -380,6 +514,18 @@ const handleConfirmRedeemOpenChange = (open: boolean) => {
           >
             {{ reward.description }}
           </p>
+          <p
+            v-if="limitSummary(reward)"
+            class="mt-1 text-xs font-medium text-[#A855F7]"
+          >
+            {{ limitSummary(reward) }}
+          </p>
+          <p
+            v-if="mode === 'child' && usageSummary(reward)"
+            class="mt-0.5 text-xs text-gray-400"
+          >
+            {{ usageSummary(reward) }}
+          </p>
           <div class="mt-3 flex items-center justify-between">
             <div class="flex items-center gap-1">
               <Coins class="h-4 w-4 text-[#FF8A3D]" />
@@ -402,9 +548,11 @@ const handleConfirmRedeemOpenChange = (open: boolean) => {
                 {{ redeemLoading === reward.id ? '兑换中...' : '立即兑换' }}
               </Button>
               <div v-else class="text-right">
-                <p class="text-xs text-gray-400">还差</p>
+                <p class="text-xs text-gray-400">
+                  {{ limitReached(reward) ? '本期无法兑换' : '还差' }}
+                </p>
                 <p class="text-sm font-medium text-gray-500">
-                  {{ pointsShortage(reward) }} 积分
+                  {{ limitReached(reward) ?? `${pointsShortage(reward)} 积分` }}
                 </p>
               </div>
             </template>

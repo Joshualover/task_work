@@ -7,10 +7,11 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
-import { eq, and, desc, inArray, gte } from 'drizzle-orm';
+import { eq, and, desc, inArray, gte, lt } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
 
 import { redemption, reward, child, pointTransaction } from '@server/database/schema';
+import { periodRangeUtc } from '@server/common/utils/date';
 import type { RedemptionStatus } from '@shared/api.interface';
 
 @Injectable()
@@ -141,6 +142,43 @@ export class RedemptionService {
     const rw = rewardResult[0];
     if (!rw.isActive) {
       throw new BadRequestException('奖励已下架');
+    }
+
+    // 兑奖频率与额度校验（每天/每周/每月 次数与积分上限）
+    const frequency = rw.frequency ?? 'unlimited';
+    if (frequency !== 'unlimited') {
+      const range = periodRangeUtc(
+        frequency as 'daily' | 'weekly' | 'monthly',
+      );
+      const used = await this.db
+        .select({ pointsCost: redemption.pointsCost })
+        .from(redemption)
+        .where(
+          and(
+            eq(redemption.childId, childId),
+            eq(redemption.rewardId, rewardId),
+            inArray(redemption.status, ['pending', 'approved']),
+            gte(redemption.createdAt, range.start),
+            lt(redemption.createdAt, range.end),
+          ),
+        );
+      const periodLabel =
+        frequency === 'daily' ? '每天' : frequency === 'weekly' ? '每周' : '每月';
+
+      if (rw.limitCount != null && used.length + 1 > rw.limitCount) {
+        throw new ConflictException(
+          `${periodLabel}最多兑换 ${rw.limitCount} 次「${rw.name}」，本期已兑换 ${used.length} 次`,
+        );
+      }
+      const usedPoints = used.reduce((sum, r) => sum + r.pointsCost, 0);
+      if (
+        rw.limitPoints != null &&
+        usedPoints + rw.pointsRequired > rw.limitPoints
+      ) {
+        throw new ConflictException(
+          `${periodLabel}「${rw.name}」最多消耗 ${rw.limitPoints} 积分，本期已消耗 ${usedPoints} 积分`,
+        );
+      }
     }
 
     // 使用事务：原子扣减积分 + 创建兑换记录 + 写入流水

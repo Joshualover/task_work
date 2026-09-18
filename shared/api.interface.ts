@@ -70,6 +70,8 @@ export interface PointTransaction {
   createdAt: string;
 }
 
+export type RewardFrequency = 'unlimited' | 'daily' | 'weekly' | 'monthly';
+
 export interface Reward {
   id: string;
   familyId: string;
@@ -79,6 +81,12 @@ export interface Reward {
   imageUrl: string | null;
   isActive: boolean;
   sortOrder: number;
+  /** 兑奖频率 */
+  frequency: RewardFrequency;
+  /** 每周期兑换次数上限（null = 不限） */
+  limitCount: number | null;
+  /** 每周期可消耗积分上限（null = 不限） */
+  limitPoints: number | null;
   createdAt: string;
 }
 
@@ -257,6 +265,9 @@ export interface CreateRewardRequest {
   description?: string;
   imageUrl?: string;
   sortOrder?: number;
+  frequency?: RewardFrequency;
+  limitCount?: number | null;
+  limitPoints?: number | null;
 }
 export interface UpdateRewardRequest {
   name?: string;
@@ -265,6 +276,26 @@ export interface UpdateRewardRequest {
   imageUrl?: string;
   isActive?: boolean;
   sortOrder?: number;
+  frequency?: RewardFrequency;
+  limitCount?: number | null;
+  limitPoints?: number | null;
+}
+
+/** 某孩子在当前周期内对某奖励的兑换用量 */
+export interface RewardUsage {
+  rewardId: string;
+  frequency: RewardFrequency;
+  /** 已用兑换次数（含待审核） */
+  count: number;
+  /** 已用积分（含待审核） */
+  points: number;
+  limitCount: number | null;
+  limitPoints: number | null;
+  periodStart: string;
+  periodEnd: string;
+}
+export interface RewardUsageResponse {
+  items: RewardUsage[];
 }
 
 // 兑换

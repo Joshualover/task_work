@@ -10,16 +10,19 @@ import {
   Req,
   ParseUUIDPipe,
   NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
 import { NeedLogin } from '@lark-apaas/fullstack-nestjs-core';
 import type { Request } from 'express';
-import { RewardService } from './reward.service';
+import { RewardService, type RewardRow } from './reward.service';
 import { FamilyService } from '../family/family.service';
 
 import type {
   RewardListResponse,
   CreateRewardRequest,
   UpdateRewardRequest,
+  RewardFrequency,
+  RewardUsageResponse,
 } from '@shared/api.interface';
 
 class CreateRewardBody implements CreateRewardRequest {
@@ -28,6 +31,9 @@ class CreateRewardBody implements CreateRewardRequest {
   description?: string;
   imageUrl?: string;
   sortOrder?: number;
+  frequency?: RewardFrequency;
+  limitCount?: number | null;
+  limitPoints?: number | null;
 }
 
 class UpdateRewardBody implements UpdateRewardRequest {
@@ -37,6 +43,26 @@ class UpdateRewardBody implements UpdateRewardRequest {
   imageUrl?: string;
   isActive?: boolean;
   sortOrder?: number;
+  frequency?: RewardFrequency;
+  limitCount?: number | null;
+  limitPoints?: number | null;
+}
+
+function toResponse(r: RewardRow) {
+  return {
+    id: r.id,
+    familyId: r.familyId,
+    name: r.name,
+    pointsRequired: r.pointsRequired,
+    description: r.description,
+    imageUrl: r.imageUrl,
+    isActive: r.isActive,
+    sortOrder: r.sortOrder,
+    frequency: r.frequency,
+    limitCount: r.limitCount,
+    limitPoints: r.limitPoints,
+    createdAt: r.createdAt.toISOString(),
+  };
 }
 
 @Controller('api/rewards')
@@ -66,21 +92,26 @@ export class RewardController {
     const family = await this.familyService.getOrCreateFamily(userId);
     const includeInactiveFlag = includeInactive === 'true';
 
-    const rewards = await this.rewardService.listRewards(family.id, includeInactiveFlag);
+    const rewards = await this.rewardService.listRewards(
+      family.id,
+      includeInactiveFlag,
+    );
+    return { items: rewards.map(toResponse) };
+  }
 
-    return {
-      items: rewards.map((r) => ({
-        id: r.id,
-        familyId: r.familyId,
-        name: r.name,
-        pointsRequired: r.pointsRequired,
-        description: r.description,
-        imageUrl: r.imageUrl,
-        isActive: r.isActive,
-        sortOrder: r.sortOrder,
-        createdAt: r.createdAt.toISOString(),
-      })),
-    };
+  /** 孩子在当前周期内对各奖励的兑换用量（必须在 :id 之前声明） */
+  @NeedLogin()
+  @Get('usage')
+  async usage(
+    @Req() req: Request,
+    @Query('childId') childId?: string,
+  ): Promise<RewardUsageResponse> {
+    if (!childId) throw new BadRequestException('childId 不能为空');
+    const { userId } = req.userContext;
+    const family = await this.familyService.getOrCreateFamily(userId);
+    await this.familyService.assertChildInFamily(childId, family.id);
+    const items = await this.rewardService.getUsage(family.id, childId);
+    return { items };
   }
 
   @NeedLogin()
@@ -90,18 +121,7 @@ export class RewardController {
     @Param('id', ParseUUIDPipe) rewardId: string,
   ) {
     await this.assertReward(req, rewardId);
-    const r = await this.rewardService.getReward(rewardId);
-    return {
-      id: r.id,
-      familyId: r.familyId,
-      name: r.name,
-      pointsRequired: r.pointsRequired,
-      description: r.description,
-      imageUrl: r.imageUrl,
-      isActive: r.isActive,
-      sortOrder: r.sortOrder,
-      createdAt: r.createdAt.toISOString(),
-    };
+    return toResponse(await this.rewardService.getReward(rewardId));
   }
 
   @NeedLogin()
@@ -112,19 +132,7 @@ export class RewardController {
   ) {
     const { userId } = req.userContext;
     const family = await this.familyService.getOrCreateFamily(userId);
-
-    const r = await this.rewardService.createReward(family.id, body);
-    return {
-      id: r.id,
-      familyId: r.familyId,
-      name: r.name,
-      pointsRequired: r.pointsRequired,
-      description: r.description,
-      imageUrl: r.imageUrl,
-      isActive: r.isActive,
-      sortOrder: r.sortOrder,
-      createdAt: r.createdAt.toISOString(),
-    };
+    return toResponse(await this.rewardService.createReward(family.id, body));
   }
 
   @NeedLogin()
@@ -135,18 +143,7 @@ export class RewardController {
     @Body() body: UpdateRewardBody,
   ) {
     await this.assertReward(req, rewardId);
-    const r = await this.rewardService.updateReward(rewardId, body);
-    return {
-      id: r.id,
-      familyId: r.familyId,
-      name: r.name,
-      pointsRequired: r.pointsRequired,
-      description: r.description,
-      imageUrl: r.imageUrl,
-      isActive: r.isActive,
-      sortOrder: r.sortOrder,
-      createdAt: r.createdAt.toISOString(),
-    };
+    return toResponse(await this.rewardService.updateReward(rewardId, body));
   }
 
   @NeedLogin()
