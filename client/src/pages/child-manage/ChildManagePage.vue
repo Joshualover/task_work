@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-full bg-[#FFF7E6] p-6">
+  <div class="min-h-full bg-[#FFF7E6] p-4 sm:p-6">
     <div class="mb-6 flex items-center justify-between">
       <div>
         <h1 class="text-2xl font-bold text-[#1F2329]">孩子管理</h1>

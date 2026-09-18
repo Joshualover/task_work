@@ -139,7 +139,7 @@ const nextPage = () => {
 </script>
 
 <template>
-  <div class="min-h-full bg-[#FFF7E6] p-6">
+  <div class="min-h-full bg-[#FFF7E6] p-4 sm:p-6">
     <!-- 页面标题 -->
     <div class="mb-6 flex items-center justify-between">
       <div>

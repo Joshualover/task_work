@@ -600,12 +600,12 @@ const removeImage = (index: number): void => {
 
 <template>
   <!-- 加载中 -->
-  <div v-if="childLoading" class="min-h-full bg-[#FFF7E6] p-6 flex items-center justify-center">
+  <div v-if="childLoading" class="min-h-full bg-[#FFF7E6] p-4 sm:p-6 flex items-center justify-center">
     <p class="text-gray-400">加载中...</p>
   </div>
 
   <!-- 无孩子空态 -->
-  <div v-else-if="!currentChildId" class="min-h-full bg-[#FFF7E6] p-6 flex items-center justify-center">
+  <div v-else-if="!currentChildId" class="min-h-full bg-[#FFF7E6] p-4 sm:p-6 flex items-center justify-center">
     <div class="text-center">
       <BookOpen class="mx-auto h-12 w-12 text-blue-200" />
       <p class="mt-3 text-gray-500">请先在「孩子管理」中添加孩子</p>
@@ -613,7 +613,7 @@ const removeImage = (index: number): void => {
   </div>
 
   <!-- 主内容 -->
-  <div v-else class="min-h-full bg-[#FFF7E6] p-6">
+  <div v-else class="min-h-full bg-[#FFF7E6] p-4 sm:p-6">
     <!-- Header -->
     <div class="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
       <div class="flex items-center gap-3">

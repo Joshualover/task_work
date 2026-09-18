@@ -1,5 +1,5 @@
 <template>
-  <div class="flex min-h-full items-center justify-center bg-[#FFF7E6] p-6">
+  <div class="flex min-h-full items-center justify-center bg-[#FFF7E6] p-4 sm:p-6">
     <div class="rounded-2xl bg-white p-8 text-center shadow-md">
       <div class="mb-4 text-6xl">🔍</div>
       <h1 class="text-2xl font-bold text-[#1F2329]">页面不存在</h1>

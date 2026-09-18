@@ -1,6 +1,6 @@
 <template>
   <template v-if="!currentChild">
-    <div class="min-h-full bg-gradient-to-b from-[#E0F2FE] to-[#FFF7E6] p-6">
+    <div class="min-h-full bg-gradient-to-b from-[#E0F2FE] to-[#FFF7E6] p-4 sm:p-6">
       <div class="rounded-2xl bg-white p-8 shadow-md text-center">
         <p class="text-gray-500">请先选择一个孩子</p>
       </div>
@@ -8,7 +8,7 @@
   </template>
 
   <template v-else>
-    <div class="min-h-full bg-gradient-to-b from-[#E0F2FE] to-[#FFF7E6] pb-24">
+    <div class="min-h-full bg-gradient-to-b from-[#E0F2FE] to-[#FFF7E6] pb-8">
       <!-- Success toast -->
       <Transition name="fade">
         <div
@@ -23,7 +23,7 @@
       </Transition>
 
       <!-- Hero section: avatar + name + points -->
-      <div class="px-6 pb-6 pt-8">
+      <div class="px-4 pb-4 pt-6 sm:px-6 sm:pb-6 sm:pt-8">
         <div class="rounded-3xl bg-gradient-to-br from-[#36BFFA] via-[#60A5FA] to-[#A855F7] p-6 text-white shadow-xl">
           <!-- Decorative sparkles -->
           <div class="relative">
@@ -82,7 +82,7 @@
       </div>
 
       <!-- Task list -->
-      <div class="px-6">
+      <div class="px-4 sm:px-6">
         <div class="mb-3 flex items-center justify-between">
           <h2 class="text-xl font-bold text-[#1F2329]">📋 今日任务</h2>
           <span class="text-sm text-gray-500">共 {{ tasks.length }} 个</span>
@@ -239,7 +239,7 @@
       </div>
 
       <!-- Encouragement bottom -->
-      <div class="mt-6 px-6">
+      <div class="mt-6 px-4 sm:px-6">
         <div class="rounded-2xl bg-gradient-to-r from-yellow-50 to-orange-50 p-4 text-center">
           <p class="text-sm text-[#FF8A3D]">
             {{ encouragementText }}

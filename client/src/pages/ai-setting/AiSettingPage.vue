@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-full bg-[#FFF7E6] p-6">
+  <div class="min-h-full bg-[#FFF7E6] p-4 sm:p-6">
     <template v-if="loading">
       <div class="text-gray-500">加载中...</div>
     </template>

@@ -1,11 +1,11 @@
 <template>
-  <div v-if="!currentChild" class="min-h-full bg-[#FFF7E6] p-6">
+  <div v-if="!currentChild" class="min-h-full bg-[#FFF7E6] p-4 sm:p-6">
     <div class="rounded-2xl bg-white p-8 shadow-md text-center">
       <p class="text-gray-500">请先添加孩子</p>
     </div>
   </div>
 
-  <div v-else class="min-h-full bg-[#FFF7E6] p-6">
+  <div v-else class="min-h-full bg-[#FFF7E6] p-4 sm:p-6">
     <!-- Welcome -->
     <div class="mb-6">
       <h1 class="text-2xl font-bold text-[#1F2329]">
