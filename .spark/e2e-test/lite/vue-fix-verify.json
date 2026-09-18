@@ -1,0 +1,1 @@
+{"cases":[{"id":1,"priority":"p0","description":"打开应用首页，验证页面不再白屏，能看到应用标题和主要内容"},{"id":2,"priority":"p1","description":"验证导航菜单可正常渲染，至少有2个导航项可见"},{"id":3,"priority":"p1","description":"验证页面无编译错误（无Compile Error页面，控制台无致命错误）"}]}
