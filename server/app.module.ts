@@ -12,6 +12,7 @@ import { RewardModule } from './modules/reward/reward.module';
 import { RedemptionModule } from './modules/redemption/redemption.module';
 import { AiModule } from './modules/ai/ai.module';
 import { ReportModule } from './modules/report/report.module';
+import { AuthModule } from './modules/auth/auth.module';
 
 // 提前加载 .env：下方 PlatformModule.forRoot 的配置在“模块装饰器求值”时读取 process.env，
 // 而 Nest 的 ConfigModule 要到 AppModule 初始化阶段才加载 .env，时机偏晚。
@@ -25,6 +26,7 @@ loadEnv();
       enableCsrf: process.env.ENABLE_CSRF !== 'false',
     }),
     // ====== @route-section: business-modules START ======
+    AuthModule,
     FamilyModule,
     ChildModule,
     TaskModule,

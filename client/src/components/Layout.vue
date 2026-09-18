@@ -14,10 +14,10 @@
         <span class="text-xl font-bold text-[#1F2329]">小学生任务积分系统</span>
       </div>
 
-      <!-- Mode Switch & Child Selector -->
+      <!-- Mode Switch & Child Selector & User -->
       <div class="flex items-center gap-4">
-        <!-- Mode Switch -->
-        <div class="flex rounded-full bg-orange-50 p-1">
+        <!-- Mode Switch（孩子账号不可见，禁止进入家长模式） -->
+        <div v-if="!authStore.isChild()" class="flex rounded-full bg-orange-50 p-1">
           <button
             type="button"
             @click="handleModeChange('parent')"
@@ -44,8 +44,8 @@
           </button>
         </div>
 
-        <!-- Child Selector -->
-        <div class="relative">
+        <!-- Child Selector（孩子账号只显示自己，不可切换） -->
+        <div v-if="!authStore.isChild()" class="relative">
           <button
             type="button"
             @click="childDropdownOpen = !childDropdownOpen"
@@ -93,6 +93,24 @@
               <span class="font-medium">{{ child.name }}</span>
             </button>
           </div>
+        </div>
+        <span v-else class="text-sm font-medium text-[#1F2329]">
+          {{ childStore.currentChild?.name ?? authStore.user?.displayName }}
+        </span>
+
+        <!-- 用户 / 退出 -->
+        <div class="flex items-center gap-2">
+          <span class="hidden text-sm text-gray-500 sm:inline">
+            {{ authStore.user?.displayName }}
+          </span>
+          <button
+            v-if="authStore.loginEnabled"
+            type="button"
+            class="rounded-full border border-orange-200 px-3 py-1.5 text-sm text-gray-600 transition-colors hover:bg-orange-50"
+            @click="void handleLogout()"
+          >
+            退出
+          </button>
         </div>
       </div>
     </header>
@@ -168,6 +186,7 @@ import {
   ChevronDown,
 } from 'lucide-vue-next';
 import { useChildStore } from '@/stores/child';
+import { useAuthStore } from '@/stores/auth';
 
 type UserMode = 'parent' | 'child';
 
@@ -192,6 +211,7 @@ const CHILD_TAB_ITEMS = [
 const route = useRoute();
 const router = useRouter();
 const childStore = useChildStore();
+const authStore = useAuthStore();
 
 const mode = ref<UserMode>('parent');
 const childDropdownOpen = ref<boolean>(false);
@@ -206,8 +226,20 @@ watch(
 );
 
 onMounted(() => {
-  void childStore.fetchChildren();
+  if (authStore.isChild()) {
+    // 孩子账号：只有自己一个孩子，且不可切换
+    if (authStore.child) {
+      childStore.setChildren([authStore.child], authStore.child.id);
+    }
+  } else {
+    void childStore.fetchChildren();
+  }
 });
+
+async function handleLogout(): Promise<void> {
+  await authStore.logout();
+  void router.replace('/login');
+}
 
 function handleModeChange(newMode: UserMode): void {
   mode.value = newMode;

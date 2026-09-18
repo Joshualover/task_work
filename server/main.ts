@@ -7,16 +7,24 @@ import type { Request, Response, NextFunction } from 'express';
 
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
+import {
+  SESSION_COOKIE,
+  verifySession,
+  type SessionPayload,
+} from './common/utils/session';
+import { isChildAllowed } from './modules/auth/role-policy';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     abortOnError: process.env.NODE_ENV !== 'development',
   });
 
-  // 独立部署（NAS / 自有服务器）时平台网关不存在：
+  const appLoginEnabled = process.env.APP_LOGIN === 'true';
+
+  // 独立部署（NAS / 自有服务器）且未开启应用登录时：
   // 通过 STANDALONE_USER_ID 注入一个固定用户身份（单家庭使用）。
   // 平台环境下不要设置该变量。
-  if (process.env.STANDALONE_USER_ID) {
+  if (!appLoginEnabled && process.env.STANDALONE_USER_ID) {
     app.use((req: Request, _res: Response, next: NextFunction) => {
       if (!req.headers['x-larkgw-suda-webuser']) {
         const webUser = {
@@ -38,6 +46,80 @@ async function bootstrap() {
     // 图片识别会以 base64 data URL 上传，默认 1mb 会触发 PayloadTooLargeError
     bodyLimit: process.env.BODY_SIZE_LIMIT || '12mb',
   });
+
+  // 应用级登录（APP_LOGIN=true）：解析会话 → 注入平台身份头 → 按角色拦截。
+  // 必须注册在 configureApp 之后（此时 cookieParser 已就绪）。
+  if (appLoginEnabled) {
+    app.use((req: Request, res: Response, next: NextFunction) => {
+      const cookies =
+        (req as Request & { cookies?: Record<string, string> }).cookies ?? {};
+      const session = verifySession(cookies[SESSION_COOKIE]);
+
+      if (!session) {
+        // 未登录：仅拦截 API（登录相关接口与页面/静态资源放行）
+        if (
+          req.path.startsWith('/api/') &&
+          !req.path.startsWith('/api/auth/')
+        ) {
+          res.status(401).json({
+            error: {
+              code: 'UNAUTHORIZED',
+              message: '未登录或登录已过期',
+              timestamp: Date.now(),
+            },
+          });
+          return;
+        }
+        next();
+        return;
+      }
+
+      {
+        (req as Request & { appUser?: SessionPayload }).appUser = session;
+        if (!req.headers['x-larkgw-suda-webuser']) {
+          const webUser = {
+            user_id: session.ownerId || session.uid,
+            app_id: 'app',
+            user_name: { zh_cn: session.displayName },
+            is_system_account: false,
+          };
+          req.headers['x-larkgw-suda-webuser'] = encodeURIComponent(
+            JSON.stringify(webUser),
+          );
+        }
+
+        // 孩子账号：仅允许白名单接口，且只能操作自己的孩子
+        if (session.role === 'child') {
+          if (!isChildAllowed(req.method, req.path)) {
+            res.status(403).json({
+              error: {
+                code: 'FORBIDDEN',
+                message: '孩子账号无权访问该功能',
+                timestamp: Date.now(),
+              },
+            });
+            return;
+          }
+          const bodyChildId = (req.body as { childId?: string } | undefined)
+            ?.childId;
+          const provided =
+            (req.query?.childId as string | undefined) ?? bodyChildId;
+          if (provided && session.childId && provided !== session.childId) {
+            res.status(403).json({
+              error: {
+                code: 'FORBIDDEN',
+                message: '只能查看自己的数据',
+                timestamp: Date.now(),
+              },
+            });
+            return;
+          }
+        }
+      }
+      next();
+    });
+  }
+
   const logger = new Logger('Bootstrap');
   const host = process.env.SERVER_HOST || 'localhost';
   const port = Number(process.env.SERVER_PORT || '3000');

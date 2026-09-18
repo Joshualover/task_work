@@ -376,3 +376,44 @@ export interface GenerateDailyTasksRequest {
   childId: string;
   date: string;
 }
+
+// ==================== 登录 / 角色 ====================
+
+export type UserRole = 'parent' | 'child';
+
+export interface AuthUser {
+  id: string;
+  username: string;
+  role: UserRole;
+  familyId: string;
+  childId: string | null;
+  displayName: string;
+}
+
+export interface AuthConfigResponse {
+  /** 是否启用了应用级登录页 */
+  loginEnabled: boolean;
+}
+
+export interface AuthMeResponse {
+  user: AuthUser;
+  /** 孩子账号对应的孩子信息 */
+  child?: Child;
+  /** 家长账号可看到家庭邀请码 */
+  family?: { id: string; name: string; inviteCode: string | null };
+}
+
+export interface LoginRequest {
+  username: string;
+  password: string;
+}
+
+export interface RegisterRequest {
+  username: string;
+  password: string;
+  displayName?: string;
+  role: UserRole;
+  /** 孩子注册必填：家庭邀请码 */
+  inviteCode?: string;
+  familyName?: string;
+}

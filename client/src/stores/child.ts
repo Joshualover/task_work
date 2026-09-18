@@ -29,6 +29,16 @@ export const useChildStore = defineStore('child', () => {
     currentChildId.value = id;
   }
 
+  /** 直接设置孩子列表（孩子账号登录时只有自己一个） */
+  function setChildren(list: Child[], currentId?: string): void {
+    children.value = list;
+    if (currentId) {
+      currentChildId.value = currentId;
+    } else if (list.length > 0 && !currentChildId.value) {
+      currentChildId.value = list[0].id;
+    }
+  }
+
   return {
     children,
     currentChildId,
@@ -36,5 +46,6 @@ export const useChildStore = defineStore('child', () => {
     loading,
     fetchChildren,
     setCurrentChildId,
+    setChildren,
   };
 });

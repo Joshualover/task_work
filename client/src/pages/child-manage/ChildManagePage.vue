@@ -15,6 +15,34 @@
       </Button>
     </div>
 
+    <!-- 家庭邀请码（孩子注册用） -->
+    <div
+      v-if="authStore.loginEnabled && authStore.family?.inviteCode"
+      class="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white p-4 shadow-md"
+    >
+      <div>
+        <p class="text-sm font-semibold text-[#1F2329]">家庭邀请码</p>
+        <p class="mt-1 text-xs text-gray-500">
+          孩子在登录页「注册」时选择「我是孩子」，填入此邀请码即可加入本家庭
+        </p>
+      </div>
+      <div class="flex items-center gap-2">
+        <span
+          class="rounded-xl bg-orange-50 px-4 py-2 font-mono text-xl font-bold tracking-widest text-[#FF8A3D]"
+        >
+          {{ authStore.family.inviteCode }}
+        </span>
+        <Button
+          size="sm"
+          variant="outline"
+          class="rounded-full"
+          @click="copyInviteCode"
+        >
+          复制
+        </Button>
+      </div>
+    </div>
+
     <div
       v-if="error"
       class="mb-4 rounded-2xl bg-red-50 p-4 text-sm text-red-600"
@@ -169,6 +197,8 @@ import { Plus, Pencil, Coins, UserPlus } from 'lucide-vue-next';
 
 import { childApi } from '@/api';
 import Button from '@/components/ui/Button.vue';
+import { toast } from '@/components/ui/toast';
+import { useAuthStore } from '@/stores/auth';
 import Dialog from '@/components/ui/Dialog.vue';
 import Input from '@/components/ui/Input.vue';
 import Label from '@/components/ui/Label.vue';
@@ -181,6 +211,7 @@ interface ChildFormData {
 }
 
 const children = ref<Child[]>([]);
+const authStore = useAuthStore();
 const loading = ref<boolean>(true);
 const error = ref<string | null>(null);
 
@@ -264,5 +295,18 @@ async function handleToggleActive(child: Child): Promise<void> {
 function getAvatarDisplay(avatarUrl: string | null): string {
   if (avatarUrl) return avatarUrl;
   return '🧒';
+}
+
+function copyInviteCode(): void {
+  const code = authStore.family?.inviteCode;
+  if (!code) return;
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(code).then(
+      () => toast.success('邀请码已复制'),
+      () => toast.info(`邀请码：${code}`),
+    );
+  } else {
+    toast.info(`邀请码：${code}`);
+  }
 }
 </script>

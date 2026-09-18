@@ -1,4 +1,5 @@
 export * as familyApi from './family';
+export * as authApi from './auth';
 export * as childApi from './child';
 export * as taskApi from './task';
 export * as pointApi from './point';

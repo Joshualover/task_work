@@ -4,6 +4,7 @@
 
 - **家长（管理员）**：配置任务、设置积分规则、维护奖励库、审核任务完成、审核兑换申请、查看报表
 - **孩子（使用者）**：查看当日任务、提交完成打卡、查看积分与流水、提交兑换申请
+- **登录与角色**：家长 / 孩子账号登录；家长可查看所有孩子的完成情况，孩子只能看自己且**无法进入家长模式**
 
 ## 技术栈
 
@@ -70,6 +71,8 @@ bash scripts/dev-local.sh stop     # 停止（应用 + 本脚本启动的 PG）
 3. 带上所需环境变量启动 `npm run dev:server` 与 `npm run dev:client`。
 
 启动后访问 **http://localhost:8080/**，日志在 `logs/{pg,dev-server,dev-client}.log`。
+
+> 首次访问会进入**登录页**：先「注册」一个家长账号；孩子的账号用家长端「孩子管理」里的**家庭邀请码**注册。详细说明见 [DEPLOY.md](./DEPLOY.md) 的「登录与角色」。
 
 可覆盖的配置（环境变量）：`LOCAL_DEV_DIR`、`LOCAL_PG_PORT/USER/PASSWORD/DATABASE`、`SERVER_PORT`、`CLIENT_DEV_PORT`、`AI_SETTING_ENCRYPTION_KEY`、`SUDA_WEBUSER`。
 

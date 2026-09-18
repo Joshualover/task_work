@@ -59,6 +59,10 @@ module.exports = tseslint.config(
         },
       },
     },
+    rules: {
+      // 项目为 Vue + Pinia，`useXxxStore` 不是 React Hook
+      'react-hooks/rules-of-hooks': 'off',
+    },
   },
   // Server configuration
   {

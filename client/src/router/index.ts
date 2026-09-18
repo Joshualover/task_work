@@ -3,8 +3,10 @@ import {
   createWebHistory,
   type RouteRecordRaw,
 } from 'vue-router';
+import { useAuthStore } from '@/stores/auth';
 
 const Layout = () => import('@/components/Layout.vue');
+const LoginPage = () => import('@/pages/login/LoginPage.vue');
 
 const ParentDashboardPage = () =>
   import('@/pages/parent-dashboard/ParentDashboardPage.vue');
@@ -22,7 +24,16 @@ const ChildDashboardPage = () =>
   import('@/pages/child-dashboard/ChildDashboardPage.vue');
 const NotFound = () => import('@/pages/NotFound/NotFound.vue');
 
+/** 孩子账号可访问的页面 */
+const CHILD_ROUTES = ['/child-dashboard', '/child-points', '/child-rewards'];
+
 const routes: RouteRecordRaw[] = [
+  {
+    path: '/login',
+    name: 'Login',
+    component: LoginPage,
+    meta: { public: true },
+  },
   {
     path: '/',
     redirect: '/dashboard',
@@ -91,8 +102,6 @@ const routes: RouteRecordRaw[] = [
       },
 
       // ==================== 孩子端 ====================
-      // 孩子端复用 PointsPage / RewardsPage，必须显式传入 mode='child'，
-      // 否则组件内默认 mode='parent'，孩子会看到家长管理界面且无法兑换。
       {
         path: 'child-dashboard',
         name: 'ChildDashboard',
@@ -125,6 +134,30 @@ const routes: RouteRecordRaw[] = [
 const router = createRouter({
   history: createWebHistory(process.env.CLIENT_BASE_PATH || '/'),
   routes,
+});
+
+// 登录与角色守卫
+router.beforeEach((to) => {
+  const auth = useAuthStore();
+
+  // 未启用应用登录（平台托管登录）：不干预
+  if (!auth.loginEnabled) return true;
+
+  if (to.path === '/login') {
+    if (auth.user) {
+      return { path: auth.user.role === 'child' ? '/child-dashboard' : '/dashboard' };
+    }
+    return true;
+  }
+
+  if (!auth.user) return { path: '/login' };
+
+  // 孩子账号只能访问孩子端页面
+  if (auth.user.role === 'child' && !CHILD_ROUTES.includes(to.path)) {
+    return { path: '/child-dashboard' };
+  }
+
+  return true;
 });
 
 export default router;

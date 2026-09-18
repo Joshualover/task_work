@@ -446,6 +446,8 @@ export const child = pgTable("child", {
 export const family = pgTable("family", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: varchar("name", { length: 100 }).notNull(),
+  // 家庭邀请码（孩子注册时使用）
+  inviteCode: varchar("invite_code", { length: 20 }),
   // System field: Creation time (auto-filled, do not modify)
   createdAt: customTimestamptz("_created_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
   // System field: Creator (auto-filled, do not modify)
@@ -458,11 +460,49 @@ export const family = pgTable("family", {
     WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
 }, (table) => [
   uniqueIndex("idx_family_created_by").on(table.createdBy),
+  uniqueIndex("idx_family_invite_code").on(table.inviteCode),
+]);
+
+// 应用级登录账号（独立部署使用；平台模式不用）
+export const appUser = pgTable("app_user", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  familyId: uuid("family_id").notNull(),
+  username: varchar("username", { length: 50 }).notNull(),
+  passwordHash: varchar("password_hash", { length: 200 }).notNull(),
+  role: varchar("role", { length: 10 }).notNull().default('parent'),
+  childId: uuid("child_id"),
+  displayName: varchar("display_name", { length: 50 }),
+  isActive: boolean("is_active").notNull().default(true),
+  // System field: Creation time (auto-filled, do not modify)
+  createdAt: customTimestamptz("_created_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  // System field: Creator (auto-filled, do not modify)
+  createdBy: userProfile("_created_by").default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+  // System field: Update time (auto-filled, do not modify)
+  updatedAt: customTimestamptz("_updated_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  // System field: Updater (auto-filled, do not modify)
+  updatedBy: userProfile("_updated_by").default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+}, (table) => [
+  uniqueIndex("idx_app_user_username").on(table.username),
+  index("idx_app_user_family_id").on(table.familyId),
+  index("idx_app_user_child_id").on(table.childId),
+  foreignKey({
+    columns: [table.familyId],
+    foreignColumns: [family.id],
+    name: "app_user_family_id_fkey",
+  }).onDelete("cascade"),
+  foreignKey({
+    columns: [table.childId],
+    foreignColumns: [child.id],
+    name: "app_user_child_id_fkey",
+  }).onDelete("set null"),
 ]);
 
 // table aliases
 export const aiRecognitionLogTable = aiRecognitionLog;
 export const aiSettingTable = aiSetting;
+export const appUserTable = appUser;
 export const childTable = child;
 export const familyTable = family;
 export const homeworkSubtaskTable = homeworkSubtask;

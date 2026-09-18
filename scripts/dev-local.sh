@@ -47,7 +47,16 @@ export FORCE_AUTHN_INNERAPI_DOMAIN="${FORCE_AUTHN_INNERAPI_DOMAIN:-http://127.0.
 export MIAODA_APP_TYPE=3
 export MIAODA_LOCAL_DEV=1
 export AI_SETTING_ENCRYPTION_KEY="${AI_SETTING_ENCRYPTION_KEY:-local-dev-encryption-key-32chars!!}"
-export SUDA_WEBUSER="${SUDA_WEBUSER:-$DEFAULT_WEBUSER}"
+
+# 应用级登录（默认开启）：本地也会出现登录页
+# 开启后身份来自登录会话，不能再注入固定用户头，否则会串号。
+export APP_LOGIN="${APP_LOGIN:-true}"
+export SESSION_SECRET="${SESSION_SECRET:-local-dev-session-secret-please-change-32}"
+if [ "$APP_LOGIN" = "true" ]; then
+  unset SUDA_WEBUSER
+else
+  export SUDA_WEBUSER="${SUDA_WEBUSER:-$DEFAULT_WEBUSER}"
+fi
 
 MIGRATION="$ROOT/server/database/migrations/local-dev-bootstrap.sql"
 

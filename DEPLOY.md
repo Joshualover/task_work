@@ -40,6 +40,8 @@ FORCE_AUTHN_INNERAPI_DOMAIN=http://127.0.0.1:9
 STANDALONE_USER_ID=nas
 STANDALONE_USER_NAME=家长
 ENABLE_CSRF=false
+APP_LOGIN=true
+SESSION_SECRET=REPLACE_WITH_32_CHAR_RANDOM
 AI_SETTING_ENCRYPTION_KEY=REPLACE_WITH_32_CHAR_RANDOM
 BODY_SIZE_LIMIT=12mb
 SERVER_HOST=127.0.0.1
@@ -162,6 +164,9 @@ SERVER_PORT=3000
 | `STANDALONE_USER_ID` | ✅ | 独立部署的固定用户 id；不设则请求无身份、会反复建家庭 |
 | `STANDALONE_USER_NAME` |  | 显示名（默认「家长」） |
 | `ENABLE_CSRF=false` | ✅ | 关闭平台 CSRF，否则接口 403 |
+| `APP_LOGIN` |  | 设为 `true` 启用登录页（家长/孩子账号）；不设则用 `STANDALONE_USER_ID` 固定身份 |
+| `SESSION_SECRET` | ✅ | 登录会话签名密钥（>= 16 位强随机）；不设会用开发默认值并告警 |
+| `COOKIE_SECURE` |  | 走 HTTPS 时设 `true`；纯 HTTP（内网 IP）保持不设 |
 | `AI_SETTING_ENCRYPTION_KEY` | ✅ | AI 密钥静态加密（>= 16 字符） |
 | `BODY_SIZE_LIMIT` |  | 请求体上限，图片识别需要（默认 `12mb`） |
 | `SERVER_HOST/PORT` |  | 监听地址/端口（默认 `localhost:3000`） |
@@ -270,9 +275,27 @@ server {
 > 关键：`client_max_body_size` 必须放开，否则上传照片会在 Nginx 层被 413 拦下（到不了应用）。
 > 无需注入任何身份 / CSRF 头（独立部署已在应用层处理）。
 
-### 8. 首次使用
+### 8. 首次使用（启用 `APP_LOGIN=true`）
 
-访问域名 → 「孩子管理」添加孩子 → 「任务配置」建必要任务 → 「AI 设置」填接口 → 「作业任务池」AI 导入 / 手动添加。
+1. 打开域名 → 登录页，先「注册」一个**家长**账号（自动创建家庭）。
+2. 登录后进入家长端，在「孩子管理」可看到**家庭邀请码**。
+3. 让孩子在登录页「注册」并选择「我是孩子」，填入该**家庭邀请码** → 自动关联到本家庭。
+4. 家长配置必要任务 / 奖励 / AI 接口；孩子登录后只能看到自己的今日任务与积分。
+
+---
+
+## 登录与角色
+
+| 角色 | 可以做 | 不可以做 |
+|---|---|---|
+| 家长 | 全部功能：任务配置、作业池、积分调整、奖励管理、兑换审核、报表、AI 设置、切换查看任意孩子 | — |
+| 孩子 | 查看/提交自己的任务、勾选子任务、查看自己的积分流水、兑换奖励 | 进入家长端（页面重定向）、调用家长接口（服务端 403）、查看其他孩子数据 |
+
+- 账号存于 `app_user` 表，密码用 scrypt 哈希，不存明文。
+- 登录态是签名 Cookie `tw_session`（7 天），密钥为 `SESSION_SECRET`。
+- 孩子账号在**服务端**有接口白名单（查看/提交任务、查看积分、兑换、勾选子任务），其余一律 403；并强制只能传自己的孩子 id。
+- 家庭通过**邀请码**关联：家长注册时自动生成 6 位邀请码。
+- 关闭登录：不设 `APP_LOGIN`（或设 false）时回退为 `STANDALONE_USER_ID` 固定身份（单家庭无登录）。
 
 ---
 
