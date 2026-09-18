@@ -4,6 +4,7 @@
 const CHILD_ALLOWED: Array<{ method: string; re: RegExp }> = [
   { method: 'GET', re: /^\/api\/auth\/(me|config)$/ },
   { method: 'POST', re: /^\/api\/auth\/logout$/ },
+  { method: 'POST', re: /^\/api\/auth\/password$/ },
   // 任务：仅查看与提交
   { method: 'GET', re: /^\/api\/tasks$/ },
   // 单条任务（排除 templates 等保留段）

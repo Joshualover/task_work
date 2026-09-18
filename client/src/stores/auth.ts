@@ -91,6 +91,13 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  async function changePassword(
+    oldPassword: string,
+    newPassword: string,
+  ): Promise<void> {
+    await authApi.changePassword(oldPassword, newPassword);
+  }
+
   return {
     loginEnabled,
     ready,
@@ -103,5 +110,6 @@ export const useAuthStore = defineStore('auth', () => {
     login,
     register,
     logout,
+    changePassword,
   };
 });

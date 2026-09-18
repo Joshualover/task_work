@@ -109,6 +109,20 @@
               <span class="font-semibold">{{ child.points }}</span>
               <span class="text-sm text-gray-500">积分</span>
             </div>
+            <div class="mt-2 flex items-center justify-between text-sm">
+              <span v-if="accountFor(child.id)" class="text-gray-500">
+                账号
+                <span class="font-medium text-[#1F2329]">{{ accountFor(child.id) }}</span>
+              </span>
+              <span v-else class="text-gray-400">未开通登录账号</span>
+              <button
+                type="button"
+                class="rounded-full border border-orange-200 px-2.5 py-1 text-xs text-[#FF8A3D] transition-colors hover:bg-orange-50"
+                @click="openAccountDialog(child)"
+              >
+                {{ accountFor(child.id) ? '重置密码' : '创建账号' }}
+              </button>
+            </div>
             <div class="mt-3 flex items-center justify-between border-t border-orange-50 pt-3">
               <span
                 :class="[
@@ -187,15 +201,62 @@
         </Button>
       </template>
     </Dialog>
+
+    <!-- 孩子登录账号 -->
+    <Dialog
+      v-model:modelValue="accountDialogOpen"
+      :title="accountFor(accountChild?.id) ? '重置孩子密码' : '为孩子创建账号'"
+      max-width-class="sm:max-w-sm"
+    >
+      <div class="space-y-4">
+        <p class="text-sm text-gray-500">
+          为孩子「{{ accountChild?.name }}」设置登录账号，孩子用它登录孩子端（只能看自己的任务）。
+        </p>
+        <div class="space-y-2">
+          <Label class="text-sm font-medium text-[#1F2329]">用户名</Label>
+          <Input
+            v-model:value="accountForm.username"
+            placeholder="3-20 位字母、数字或下划线"
+            class="rounded-xl"
+          />
+        </div>
+        <div class="space-y-2">
+          <Label class="text-sm font-medium text-[#1F2329]">密码</Label>
+          <Input
+            v-model:value="accountForm.password"
+            type="password"
+            placeholder="至少 6 位"
+            class="rounded-xl"
+          />
+        </div>
+      </div>
+      <template #footer>
+        <Button
+          variant="outline"
+          class="rounded-full"
+          :disabled="accountSubmitting"
+          @click="accountDialogOpen = false"
+        >
+          取消
+        </Button>
+        <Button
+          class="rounded-full bg-[#FF8A3D] text-white hover:bg-[#FF7A2D]"
+          :disabled="accountSubmitting"
+          @click="void handleSaveAccount()"
+        >
+          {{ accountSubmitting ? '保存中...' : '保存' }}
+        </Button>
+      </template>
+    </Dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, reactive, onMounted } from 'vue';
 import { logger } from '@lark-apaas/client-toolkit/logger';
 import { Plus, Pencil, Coins, UserPlus } from 'lucide-vue-next';
 
-import { childApi } from '@/api';
+import { childApi, authApi } from '@/api';
 import Button from '@/components/ui/Button.vue';
 import { toast } from '@/components/ui/toast';
 import { useAuthStore } from '@/stores/auth';
@@ -212,6 +273,13 @@ interface ChildFormData {
 
 const children = ref<Child[]>([]);
 const authStore = useAuthStore();
+
+// 孩子登录账号（childId -> username）
+const accounts = ref<Record<string, string>>({});
+const accountDialogOpen = ref<boolean>(false);
+const accountChild = ref<Child | null>(null);
+const accountSubmitting = ref<boolean>(false);
+const accountForm = reactive({ username: '', password: '' });
 const loading = ref<boolean>(true);
 const error = ref<string | null>(null);
 
@@ -236,7 +304,56 @@ async function fetchChildren(): Promise<void> {
 
 onMounted(() => {
   void fetchChildren();
+  void fetchAccounts();
 });
+
+function accountFor(childId: string | undefined): string | undefined {
+  return childId ? accounts.value[childId] : undefined;
+}
+
+async function fetchAccounts(): Promise<void> {
+  if (!authStore.loginEnabled || authStore.isChild()) return;
+  try {
+    const result = await authApi.listChildAccounts();
+    const map: Record<string, string> = {};
+    for (const item of result.items) map[item.childId] = item.username;
+    accounts.value = map;
+  } catch (error) {
+    logger.error('获取孩子账号失败', error);
+  }
+}
+
+function openAccountDialog(child: Child): void {
+  accountChild.value = child;
+  accountForm.username = accounts.value[child.id] ?? '';
+  accountForm.password = '';
+  accountDialogOpen.value = true;
+}
+
+async function handleSaveAccount(): Promise<void> {
+  if (!accountChild.value) return;
+  if (!accountForm.username.trim() || !accountForm.password) {
+    toast.error('请填写用户名和密码');
+    return;
+  }
+  accountSubmitting.value = true;
+  try {
+    await authApi.saveChildAccount({
+      childId: accountChild.value.id,
+      username: accountForm.username.trim(),
+      password: accountForm.password,
+    });
+    toast.success('账号已保存');
+    accountDialogOpen.value = false;
+    await fetchAccounts();
+  } catch (error) {
+    logger.error('保存孩子账号失败', error);
+    const e = error as { response?: { data?: { message?: string } } };
+    toast.error(e?.response?.data?.message || '保存失败，请重试');
+  } finally {
+    accountSubmitting.value = false;
+  }
+}
 
 function handleAddClick(): void {
   editingChild.value = null;

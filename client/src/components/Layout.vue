@@ -107,6 +107,14 @@
             v-if="authStore.loginEnabled"
             type="button"
             class="rounded-full border border-orange-200 px-3 py-1.5 text-sm text-gray-600 transition-colors hover:bg-orange-50"
+            @click="pwdDialogOpen = true"
+          >
+            修改密码
+          </button>
+          <button
+            v-if="authStore.loginEnabled"
+            type="button"
+            class="rounded-full border border-orange-200 px-3 py-1.5 text-sm text-gray-600 transition-colors hover:bg-orange-50"
             @click="void handleLogout()"
           >
             退出
@@ -164,12 +172,56 @@
         </router-link>
       </div>
     </nav>
+
+    <!-- 修改密码 -->
+    <Dialog
+      v-model:modelValue="pwdDialogOpen"
+      title="修改密码"
+      max-width-class="sm:max-w-sm"
+    >
+      <div class="space-y-4">
+        <div class="space-y-2">
+          <Label class="text-sm font-medium text-[#1F2329]">原密码</Label>
+          <Input
+            v-model:value="pwdForm.oldPassword"
+            type="password"
+            placeholder="请输入原密码"
+            class="rounded-xl"
+          />
+        </div>
+        <div class="space-y-2">
+          <Label class="text-sm font-medium text-[#1F2329]">新密码</Label>
+          <Input
+            v-model:value="pwdForm.newPassword"
+            type="password"
+            placeholder="至少 6 位"
+            class="rounded-xl"
+          />
+        </div>
+      </div>
+      <template #footer>
+        <Button
+          variant="outline"
+          class="rounded-full"
+          :disabled="pwdSubmitting"
+          @click="pwdDialogOpen = false"
+        >
+          取消
+        </Button>
+        <Button
+          class="rounded-full bg-[#FF8A3D] text-white hover:bg-[#FF7A2D]"
+          :disabled="pwdSubmitting"
+          @click="void handleChangePassword()"
+        >
+          {{ pwdSubmitting ? '提交中...' : '确认修改' }}
+        </Button>
+      </template>
+    </Dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { ref, reactive, watch, onMounted } from 'vue';import { useRoute, useRouter } from 'vue-router';
 import {
   LayoutDashboard,
   Users,
@@ -187,6 +239,11 @@ import {
 } from 'lucide-vue-next';
 import { useChildStore } from '@/stores/child';
 import { useAuthStore } from '@/stores/auth';
+import Dialog from '@/components/ui/Dialog.vue';
+import Input from '@/components/ui/Input.vue';
+import Label from '@/components/ui/Label.vue';
+import Button from '@/components/ui/Button.vue';
+import { toast } from '@/components/ui/toast';
 
 type UserMode = 'parent' | 'child';
 
@@ -239,6 +296,34 @@ onMounted(() => {
 async function handleLogout(): Promise<void> {
   await authStore.logout();
   void router.replace('/login');
+}
+
+const pwdDialogOpen = ref<boolean>(false);
+const pwdSubmitting = ref<boolean>(false);
+const pwdForm = reactive({ oldPassword: '', newPassword: '' });
+
+async function handleChangePassword(): Promise<void> {
+  if (!pwdForm.oldPassword || !pwdForm.newPassword) {
+    toast.error('请填写原密码和新密码');
+    return;
+  }
+  if (pwdForm.newPassword.length < 6) {
+    toast.error('新密码至少 6 位');
+    return;
+  }
+  pwdSubmitting.value = true;
+  try {
+    await authStore.changePassword(pwdForm.oldPassword, pwdForm.newPassword);
+    toast.success('密码已修改');
+    pwdDialogOpen.value = false;
+    pwdForm.oldPassword = '';
+    pwdForm.newPassword = '';
+  } catch (error) {
+    const e = error as { response?: { data?: { message?: string } } };
+    toast.error(e?.response?.data?.message || '修改失败，请重试');
+  } finally {
+    pwdSubmitting.value = false;
+  }
 }
 
 function handleModeChange(newMode: UserMode): void {

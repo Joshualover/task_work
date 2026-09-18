@@ -3,6 +3,7 @@ import {
   ConflictException,
   Inject,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
@@ -84,6 +85,99 @@ export class AuthService {
       .where(eq(appUser.username, username))
       .limit(1);
     if (rows.length > 0) throw new ConflictException('用户名已存在');
+  }
+
+  /** 修改自己的密码 */
+  async changePassword(
+    uid: string,
+    oldPassword?: string,
+    newPassword?: string,
+  ): Promise<void> {
+    if (!newPassword || newPassword.length < 6) {
+      throw new BadRequestException('新密码至少 6 位');
+    }
+    const [user] = await this.db
+      .select()
+      .from(appUser)
+      .where(eq(appUser.id, uid))
+      .limit(1);
+    if (!user) throw new UnauthorizedException('未登录');
+    if (!verifyPassword(oldPassword ?? '', user.passwordHash)) {
+      throw new BadRequestException('原密码不正确');
+    }
+    await this.db
+      .update(appUser)
+      .set({ passwordHash: hashPassword(newPassword), updatedAt: new Date() })
+      .where(eq(appUser.id, uid));
+  }
+
+  /** 家长：列出本家庭已开通账号的孩子 */
+  async listChildAccounts(
+    familyId: string,
+  ): Promise<Array<{ childId: string; username: string }>> {
+    const rows = await this.db
+      .select({ childId: appUser.childId, username: appUser.username })
+      .from(appUser)
+      .where(and(eq(appUser.familyId, familyId), eq(appUser.role, 'child')));
+    return rows
+      .filter((r): r is { childId: string; username: string } => !!r.childId)
+      .map((r) => ({ childId: r.childId, username: r.username }));
+  }
+
+  /** 家长：为孩子创建 / 重置登录账号 */
+  async upsertChildAccount(
+    familyId: string,
+    childId: string,
+    username?: string,
+    password?: string,
+  ): Promise<{ childId: string; username: string }> {
+    const uname = this.normalizeUsername(username);
+    this.validateCredentials(uname, password);
+
+    const [childRow] = await this.db
+      .select()
+      .from(child)
+      .where(and(eq(child.id, childId), eq(child.familyId, familyId)))
+      .limit(1);
+    if (!childRow) throw new NotFoundException('孩子不存在');
+
+    const [existing] = await this.db
+      .select()
+      .from(appUser)
+      .where(
+        and(
+          eq(appUser.familyId, familyId),
+          eq(appUser.childId, childId),
+          eq(appUser.role, 'child'),
+        ),
+      )
+      .limit(1);
+
+    if (existing) {
+      if (existing.username !== uname) await this.assertUsernameFree(uname);
+      await this.db
+        .update(appUser)
+        .set({
+          username: uname,
+          passwordHash: hashPassword(password!),
+          displayName: childRow.name,
+          updatedAt: new Date(),
+        })
+        .where(eq(appUser.id, existing.id));
+    } else {
+      await this.assertUsernameFree(uname);
+      await this.db.insert(appUser).values({
+        id: randomUUID(),
+        familyId,
+        username: uname,
+        passwordHash: hashPassword(password!),
+        role: 'child',
+        childId,
+        displayName: childRow.name,
+      });
+    }
+
+    return { childId, username: uname };
   }
 
   async register(input: RegisterInput): Promise<AuthResult> {

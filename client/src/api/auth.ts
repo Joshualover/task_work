@@ -34,3 +34,35 @@ export async function me(): Promise<AuthMeResponse> {
   const response = await apiClient.get<AuthMeResponse>('/api/auth/me');
   return response.data;
 }
+
+export async function changePassword(
+  oldPassword: string,
+  newPassword: string,
+): Promise<{ ok: boolean }> {
+  const response = await apiClient.post<{ ok: boolean }>('/api/auth/password', {
+    oldPassword,
+    newPassword,
+  });
+  return response.data;
+}
+
+export async function listChildAccounts(): Promise<{
+  items: Array<{ childId: string; username: string }>;
+}> {
+  const response = await apiClient.get<{
+    items: Array<{ childId: string; username: string }>;
+  }>('/api/auth/child-accounts');
+  return response.data;
+}
+
+export async function saveChildAccount(data: {
+  childId: string;
+  username: string;
+  password: string;
+}): Promise<{ childId: string; username: string }> {
+  const response = await apiClient.post<{ childId: string; username: string }>(
+    '/api/auth/child-account',
+    data,
+  );
+  return response.data;
+}
