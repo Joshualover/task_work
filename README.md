@@ -53,7 +53,6 @@ npm run dev
 平台会通过 `lark-cli apps +env-pull` 注入 `SUDA_DATABASE_URL`、`FORCE_AUTHN_INNERAPI_DOMAIN`、`SUDA_WEBUSER` 等，并代理 CSRF 与用户身份。
 
 ### 方式二：本地自建（无平台账号时）
-
 本地缺少平台注入的数据库与鉴权，需要自行补齐。推荐用一键脚本。
 
 #### 一键启动（推荐）
@@ -188,6 +187,21 @@ npm run build           # 平台完整构建（含路由生成、依赖裁剪）
 - 应用级迁移放在 `server/database/migrations/`，需在部署代码**之前**执行：
   - `2026-09-18_add_constraints_and_suggestion_link.sql`：家庭唯一约束、每日任务唯一索引、`task_instance.suggestion_id` 关联列（**生产必需**）。
   - `local-dev-bootstrap.sql`：本地开发用建表脚本（**仅本地**）。
+
+## 部署
+
+部署到自有服务器 / NAS（1Panel + Node.js，独立部署模式）详见 **[DEPLOY.md](./DEPLOY.md)**。
+
+要点：
+
+```bash
+cp .env.example .env          # 配置 SUDA_DATABASE_URL / FORCE_AUTHN_INNERAPI_DOMAIN / STANDALONE_USER_ID / ENABLE_CSRF=false / AI_SETTING_ENCRYPTION_KEY
+npm install --ignore-scripts
+MIAODA_APP_TYPE=3 npm run build:prod
+node dist/server/main.js      # 工作目录为项目根
+```
+
+---
 
 ## 设计规范
 
