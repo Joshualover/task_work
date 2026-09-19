@@ -45,6 +45,7 @@ const STATUS_COLORS: Record<TaskStatus, string> = {
 };
 
 const SUBJECT_OPTIONS = [
+  { value: '', label: '普通任务（无科目）' },
   { value: '语文', label: '语文' },
   { value: '数学', label: '数学' },
   { value: '英语', label: '英语' },
@@ -78,7 +79,7 @@ const loading = ref<boolean>(false);
 const dialogOpen = ref<boolean>(false);
 const formData = reactive<FormData>({
   name: '',
-  subject: '语文',
+  subject: '',
   points: 10,
   deadline: '',
   taskDate: '',
@@ -383,7 +384,7 @@ const handleCreateHomework = async (): Promise<void> => {
 
 const resetForm = (): void => {
   formData.name = '';
-  formData.subject = '语文';
+  formData.subject = '';
   formData.points = 10;
   formData.deadline = '';
   formData.taskDate = today.value;
@@ -403,7 +404,7 @@ const openCreateDialog = (): void => {
 const openEditTask = (task: TaskInstance): void => {
   const subtasks = getTaskSubtasks(task);
   formData.name = task.name;
-  formData.subject = task.subject ?? '语文';
+  formData.subject = task.subject ?? '';
   formData.points = task.points;
   formData.deadline = task.deadline ?? '';
   formData.extendHoliday = (task.extendDays ?? 0) > 0;
@@ -1439,7 +1440,6 @@ const removeImage = (index: number): void => {
             id="subject"
             v-model:modelValue="formData.subject"
             :options="SUBJECT_OPTIONS"
-            placeholder="选择科目"
           />
         </div>
 

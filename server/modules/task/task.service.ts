@@ -378,7 +378,7 @@ export class TaskService {
         taskTemplateId: null,
         type: 'homework',
         name: data.name,
-        subject: data.subject ?? null,
+        subject: data.subject || null,
         points: data.points,
         difficultyMultiplier: '1.0',
         finalPoints: null,
