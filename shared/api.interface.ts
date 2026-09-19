@@ -382,6 +382,13 @@ export interface ReviewAllowanceRequest {
   reviewNote?: string;
 }
 
+export interface AdjustAllowanceRequest {
+  childId: string;
+  /** 变动金额（分），正=增加 负=减少 */
+  changeAmount: number;
+  reason: string;
+}
+
 // 兑换
 export interface RedemptionListQuery {
   childId?: string;

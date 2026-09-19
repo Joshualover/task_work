@@ -22,6 +22,16 @@
           <Plus class="h-5 w-5" />
           申请使用
         </Button>
+        <Button
+          v-else
+          size="lg"
+          variant="outline"
+          class="rounded-full border-[#36BFFA] text-[#36BFFA] hover:bg-blue-50"
+          @click="openAdjustDialog"
+        >
+          <Pencil class="h-5 w-5" />
+          调整余额
+        </Button>
       </div>
 
       <!-- 余额 -->
@@ -255,6 +265,60 @@
         </Button>
       </template>
     </Dialog>
+    <!-- 调整余额弹窗（家长） -->
+    <Dialog
+      v-model:model-value="adjustDialogOpen"
+      title="调整零花钱余额"
+      max-width-class="sm:max-w-sm"
+    >
+      <div class="space-y-4">
+        <p class="text-sm text-gray-500">
+          当前余额 ¥{{ fenToYuan(balance) }}。可直接填入实际余额（例如原有的零花钱），
+          差额会记入账单。
+        </p>
+        <div class="space-y-2">
+          <Label class="text-sm font-medium text-[#1F2329]">调整后余额（元）</Label>
+          <Input
+            type="number"
+            placeholder="如：100"
+            v-model:value="adjustForm.balance"
+            class="rounded-xl"
+          />
+        </div>
+        <div class="space-y-2">
+          <Label class="text-sm font-medium text-[#1F2329]">原因</Label>
+          <Input
+            placeholder="如：期初余额 / 纠错"
+            v-model:value="adjustForm.reason"
+            class="rounded-xl"
+          />
+        </div>
+        <p
+          v-if="adjustDelta !== 0"
+          class="text-xs font-medium"
+          :class="adjustDelta > 0 ? 'text-[#52C41A]' : 'text-[#FF4D4F]'"
+        >
+          将{{ adjustDelta > 0 ? '增加' : '减少' }} ¥{{ fenToYuan(Math.abs(adjustDelta)) }}
+        </p>
+      </div>
+      <template #footer>
+        <Button
+          variant="outline"
+          class="rounded-full"
+          :disabled="adjustSubmitting"
+          @click="adjustDialogOpen = false"
+        >
+          取消
+        </Button>
+        <Button
+          class="rounded-full bg-[#36BFFA] text-white hover:bg-[#2AA9E0]"
+          :disabled="adjustSubmitting || adjustDelta === 0"
+          @click="void handleAdjust()"
+        >
+          {{ adjustSubmitting ? '提交中...' : '确认调整' }}
+        </Button>
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -262,6 +326,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import {
   Plus,
+  Pencil,
   TrendingUp,
   TrendingDown,
   ChevronLeft,
@@ -318,6 +383,13 @@ const requestDialogOpen = ref<boolean>(false);
 const requestSubmitting = ref<boolean>(false);
 const requestForm = reactive({ amount: '', purpose: '' });
 
+const adjustDialogOpen = ref<boolean>(false);
+const adjustSubmitting = ref<boolean>(false);
+const adjustForm = reactive({ balance: '', reason: '' });
+
+/** 目标余额与当前余额的差额（分） */
+const adjustDelta = computed(() => yuanToFen(adjustForm.balance) - balance.value);
+
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
 const pendingRequests = computed(() =>
   requests.value.filter((r) => r.status === 'pending'),
@@ -370,6 +442,37 @@ function openRequestDialog(): void {
   requestDialogOpen.value = true;
 }
 
+function openAdjustDialog(): void {
+  adjustForm.balance = fenToYuan(balance.value);
+  adjustForm.reason = '余额调整';
+  adjustDialogOpen.value = true;
+}
+
+async function handleAdjust(): Promise<void> {
+  const delta = adjustDelta.value;
+  if (delta === 0) return;
+  if (!adjustForm.reason.trim()) {
+    toast.error('请填写调整原因');
+    return;
+  }
+  adjustSubmitting.value = true;
+  try {
+    await allowanceApi.adjustBalance({
+      childId: childId.value,
+      changeAmount: delta,
+      reason: adjustForm.reason.trim(),
+    });
+    toast.success('余额已调整');
+    adjustDialogOpen.value = false;
+    await fetchAll();
+  } catch (error) {
+    logger.error('调整零花钱失败', error);
+    toast.error(getErrorMessage(error, '调整失败，请重试'));
+  } finally {
+    adjustSubmitting.value = false;
+  }
+}
+
 async function handleSubmitRequest(): Promise<void> {
   const amount = yuanToFen(requestForm.amount);
   if (amount <= 0) {
@@ -395,7 +498,10 @@ async function handleSubmitRequest(): Promise<void> {
   }
 }
 
-async function handleReview(r: AllowanceRequest, approved: boolean): Promise<void> {
+async function handleReview(
+  r: AllowanceRequest,
+  approved: boolean,
+): Promise<void> {
   actionLoading.value = r.id;
   try {
     await allowanceApi.reviewRequest(r.id, { approved });

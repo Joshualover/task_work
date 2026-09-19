@@ -178,8 +178,7 @@ export class AllowanceService {
     };
   }
 
-  /** 家长审批：通过则扣减零花钱并记流水 */
-  async reviewRequest(
+  /** 家长审批：通过则扣减零花钱并记流水 */  async reviewRequest(
     requestId: string,
     approved: boolean,
     reviewNote?: string,
@@ -256,5 +255,64 @@ export class AllowanceService {
       reviewedAt: row.reviewedAt,
       createdAt: row.createdAt,
     };
+  }
+
+  /**
+   * 家长手动调整零花钱余额（如录入期初金额 / 纠错）。
+   * changeAmount 为分，正=增加，负=减少；会记一笔 adjust 流水。
+   */
+  async adjustBalance(
+    childId: string,
+    changeAmount: number,
+    reason: string,
+    operatorId?: string,
+  ): Promise<number> {
+    if (!Number.isFinite(changeAmount) || changeAmount === 0) {
+      throw new BadRequestException('调整金额不能为 0');
+    }
+    if (!reason || !reason.trim()) {
+      throw new BadRequestException('请填写调整原因');
+    }
+    const amount = Math.floor(changeAmount);
+
+    return this.db.transaction(async (tx) => {
+      const where =
+        amount > 0
+          ? eq(child.id, childId)
+          : and(eq(child.id, childId), gte(child.allowanceBalance, -amount));
+
+      const updated = await tx
+        .update(child)
+        .set({
+          allowanceBalance: sql`${child.allowanceBalance} + ${amount}`,
+        })
+        .where(where)
+        .returning({ balance: child.allowanceBalance });
+
+      if (updated.length === 0) {
+        const exists = await tx
+          .select({ id: child.id })
+          .from(child)
+          .where(eq(child.id, childId))
+          .limit(1);
+        if (exists.length === 0) throw new NotFoundException('孩子不存在');
+        throw new ConflictException('零花钱余额不足');
+      }
+
+      await tx.insert(allowanceTransaction).values({
+        childId,
+        changeAmount: amount,
+        balanceAfter: updated[0].balance,
+        type: 'adjust',
+        relatedType: 'manual',
+        reason: reason.trim(),
+        operator: operatorId ?? null,
+      });
+
+      this.logger.log(
+        `调整零花钱 childId=${childId} amount=${amount} balance=${updated[0].balance}`,
+      );
+      return updated[0].balance;
+    });
   }
 }

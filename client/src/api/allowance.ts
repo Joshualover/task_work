@@ -5,6 +5,7 @@ import type {
   AllowanceRequest,
   CreateAllowanceRequest,
   ReviewAllowanceRequest,
+  AdjustAllowanceRequest,
 } from '@shared/api.interface';
 
 export async function getBalance(childId: string): Promise<{ balance: number }> {
@@ -40,8 +41,7 @@ export async function listRequests(params?: {
 
 export async function createRequest(
   data: CreateAllowanceRequest,
-): Promise<AllowanceRequest> {
-  const response = await apiClient.post<AllowanceRequest>(
+): Promise<AllowanceRequest> {  const response = await apiClient.post<AllowanceRequest>(
     '/api/allowance/requests',
     data,
   );
@@ -54,6 +54,17 @@ export async function reviewRequest(
 ): Promise<AllowanceRequest> {
   const response = await apiClient.post<AllowanceRequest>(
     `/api/allowance/requests/${id}/review`,
+    data,
+  );
+  return response.data;
+}
+
+/** 家长手动调整零花钱余额（分） */
+export async function adjustBalance(
+  data: AdjustAllowanceRequest,
+): Promise<{ balance: number }> {
+  const response = await apiClient.post<{ balance: number }>(
+    '/api/allowance/adjust',
     data,
   );
   return response.data;

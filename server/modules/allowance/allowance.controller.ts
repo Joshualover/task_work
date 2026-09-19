@@ -21,6 +21,7 @@ import type {
   AllowanceRequestStatus,
   CreateAllowanceRequest,
   ReviewAllowanceRequest,
+  AdjustAllowanceRequest,
 } from '@shared/api.interface';
 
 class CreateAllowanceRequestBody implements CreateAllowanceRequest {
@@ -32,6 +33,12 @@ class CreateAllowanceRequestBody implements CreateAllowanceRequest {
 class ReviewAllowanceRequestBody implements ReviewAllowanceRequest {
   approved!: boolean;
   reviewNote?: string;
+}
+
+class AdjustAllowanceRequestBody implements AdjustAllowanceRequest {
+  childId!: string;
+  changeAmount!: number;
+  reason!: string;
 }
 
 @Controller('api/allowance')
@@ -123,6 +130,32 @@ export class AllowanceController {
         createdAt: r.createdAt.toISOString(),
       })),
     };
+  }
+
+  @NeedLogin()
+  @Post('adjust')
+  async adjust(
+    @Req() req: Request,
+    @Body() body: AdjustAllowanceRequestBody,
+  ): Promise<{ balance: number }> {
+    if (!body.childId) throw new BadRequestException('childId 不能为空');
+    if (body.changeAmount === undefined || body.changeAmount === null) {
+      throw new BadRequestException('changeAmount 不能为空');
+    }
+    if (!body.reason || !body.reason.trim()) {
+      throw new BadRequestException('调整原因不能为空');
+    }
+    const { userId } = req.userContext;
+    const family = await this.familyService.getOrCreateFamily(userId);
+    await this.familyService.assertChildInFamily(body.childId, family.id);
+
+    const balance = await this.allowanceService.adjustBalance(
+      body.childId,
+      Number(body.changeAmount),
+      body.reason,
+      userId,
+    );
+    return { balance };
   }
 
   @NeedLogin()
