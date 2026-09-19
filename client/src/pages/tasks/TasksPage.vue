@@ -18,6 +18,7 @@ import Switch from '@/components/ui/Switch.vue';
 import { taskApi, aiApi } from '@/api';
 import { useChildStore } from '@/stores/child';
 import { todayString } from '@/utils/date';
+import { taskCardStyle } from '@/utils/subject-image';
 import { toast } from '@/components/ui/toast';
 import type {
   TaskInstance,
@@ -778,6 +779,7 @@ const removeImage = (index: number): void => {
           <div
             v-for="task in groupedTasks.pending"
             :key="task.id"
+            :style="taskCardStyle(task)"
             class="rounded-2xl bg-white p-4 shadow-md transition-shadow hover:shadow-lg"
           >
             <!-- Task Card Content -->
@@ -917,6 +919,7 @@ const removeImage = (index: number): void => {
           <div
             v-for="task in groupedTasks.submitted"
             :key="task.id"
+            :style="taskCardStyle(task)"
             class="rounded-2xl bg-white p-4 shadow-md transition-shadow hover:shadow-lg"
           >
             <div class="flex items-start justify-between">
@@ -1055,6 +1058,7 @@ const removeImage = (index: number): void => {
           <div
             v-for="task in groupedTasks.completed"
             :key="task.id"
+            :style="taskCardStyle(task)"
             class="rounded-2xl bg-white p-4 shadow-md transition-shadow hover:shadow-lg"
           >
             <div class="flex items-start justify-between">
@@ -1182,6 +1186,7 @@ const removeImage = (index: number): void => {
           <div
             v-for="task in groupedTasks.overdue"
             :key="task.id"
+            :style="taskCardStyle(task)"
             class="rounded-2xl bg-white p-4 shadow-md transition-shadow hover:shadow-lg"
           >
             <div class="flex items-start justify-between">
@@ -1302,6 +1307,7 @@ const removeImage = (index: number): void => {
           <div
             v-for="task in groupedTasks.rejected"
             :key="task.id"
+            :style="taskCardStyle(task)"
             class="rounded-2xl bg-white p-4 shadow-md transition-shadow hover:shadow-lg"
           >
             <div class="flex items-start justify-between">

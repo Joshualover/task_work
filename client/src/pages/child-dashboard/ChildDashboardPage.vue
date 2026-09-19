@@ -106,6 +106,7 @@
               'rounded-2xl p-4 shadow-md transition-all hover:shadow-lg',
               task.status === 'pending' ? 'bg-white' : 'bg-white/70',
             ]"
+            :style="taskCardStyle(task)"
           >
             <div class="flex items-start justify-between gap-3">
               <div class="flex-1">
@@ -311,6 +312,7 @@ import {
 import { taskApi, pointApi, aiApi } from '@/api';
 import { useChildStore } from '@/stores/child';
 import { todayString } from '@/utils/date';
+import { taskCardStyle } from '@/utils/subject-image';
 import Dialog from '@/components/ui/Dialog.vue';
 import Button from '@/components/ui/Button.vue';
 import Textarea from '@/components/ui/Textarea.vue';
