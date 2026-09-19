@@ -1,7 +1,7 @@
 <template>
   <div class="min-h-full bg-[#FFF7E6] p-4 sm:p-6">
     <!-- 标题 -->
-    <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+    <div class="mx-auto mb-4 flex max-w-lg flex-wrap items-center justify-between gap-3">
       <div>
         <h1 class="text-2xl font-bold text-[#1F2329]">任务记录</h1>
         <p class="mt-1 text-sm text-gray-500">
@@ -83,7 +83,7 @@
       </div>
 
       <!-- 选中日详情 -->
-      <div class="mx-auto mt-4 max-w-2xl rounded-2xl bg-white p-4 shadow-md">
+      <div class="mx-auto mt-4 max-w-lg rounded-2xl bg-white p-4 shadow-md">
         <div class="mb-3 flex items-center justify-between">
           <h2 class="text-base font-semibold text-[#1F2329]">
             {{ selectedDate }}
