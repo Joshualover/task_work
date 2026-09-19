@@ -8,6 +8,7 @@ import type {
   UpdateTaskTemplateRequest,
   TaskListQuery,
   CreateHomeworkTaskRequest,
+  UpdateHomeworkTaskRequest,
   TaskStatus,
   HomeworkSubtask,
 } from '@shared/api.interface';
@@ -358,8 +359,7 @@ export class TaskService {
     return this.mapTaskInstance(rows[0]);
   }
 
-  async createHomeworkTask(data: CreateHomeworkTaskRequest): Promise<TaskInstance> {
-    const [row] = await this.db
+  async createHomeworkTask(data: CreateHomeworkTaskRequest): Promise<TaskInstance> {    const [row] = await this.db
       .insert(taskInstance)
       .values({
         childId: data.childId,
@@ -382,6 +382,44 @@ export class TaskService {
 
     this.logger.log(`创建作业任务: ${row.id}, 名称: ${data.name}`);
     return this.mapTaskInstance(row);
+  }
+
+  /** 编辑作业任务（仅任务实例字段；子任务由 AI 建议接口处理） */
+  async updateHomeworkTask(
+    taskId: string,
+    data: UpdateHomeworkTaskRequest,
+  ): Promise<TaskInstance> {
+    const task = await this.getTask(taskId);
+    if (task.type !== 'homework') {
+      throw new BadRequestException('仅作业任务可编辑');
+    }
+
+    const patch: Partial<typeof taskInstance.$inferInsert> = {};
+    if (data.name !== undefined) {
+      if (!data.name.trim()) throw new BadRequestException('任务名称不能为空');
+      patch.name = data.name.trim();
+    }
+    if (data.subject !== undefined) patch.subject = data.subject || null;
+    if (data.points !== undefined) {
+      if (data.points < 0) throw new BadRequestException('积分不能为负数');
+      patch.points = data.points;
+    }
+    if (data.deadline !== undefined) patch.deadline = data.deadline || null;
+    if (data.extendDays !== undefined) {
+      patch.extendDays = Math.max(0, Math.floor(Number(data.extendDays) || 0));
+    }
+    if (data.taskDate !== undefined) patch.taskDate = data.taskDate;
+
+    if (Object.keys(patch).length === 0) return task;
+
+    const updated = await this.db
+      .update(taskInstance)
+      .set(patch)
+      .where(eq(taskInstance.id, taskId))
+      .returning();
+
+    this.logger.log(`更新作业任务 ${taskId}`);
+    return this.mapTaskInstance(updated[0]);
   }
 
   async submitTask(taskId: string, completionNote?: string): Promise<TaskInstance> {

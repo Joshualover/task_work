@@ -7,6 +7,7 @@ import type {
   TaskListResponse,
   TaskListQuery,
   CreateHomeworkTaskRequest,
+  UpdateHomeworkTaskRequest,
   SubmitTaskRequest,
   ReviewTaskRequest,
   TaskInstance,
@@ -79,6 +80,17 @@ export async function createHomeworkTask(
 ): Promise<{ task: TaskInstance }> {
   const response = await apiClient.post<{ task: TaskInstance }>(
     '/api/tasks/homework',
+    data,
+  );
+  return response.data;
+}
+
+export async function updateTask(
+  id: string,
+  data: UpdateHomeworkTaskRequest,
+): Promise<{ task: TaskInstance }> {
+  const response = await apiClient.patch<{ task: TaskInstance }>(
+    `/api/tasks/${id}`,
     data,
   );
   return response.data;

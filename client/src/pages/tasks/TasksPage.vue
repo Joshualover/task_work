@@ -87,6 +87,7 @@ const formData = reactive<FormData>({
 const formSubtasks = reactive<SubtaskFormItem[]>([]);
 const isEditMode = ref<boolean>(false);
 const editingSuggestionId = ref<string>('');
+const editingTaskId = ref<string>('');
 const reviewTaskId = ref<string | null>(null);
 const rejectReason = ref<string>('');
 
@@ -286,24 +287,55 @@ const handleCreateHomework = async (): Promise<void> => {
   const validSubtasks = formSubtasks.filter((st: SubtaskFormItem) => st.content.trim() !== '');
 
   try {
-    if (isEditMode.value && editingSuggestionId.value) {
-      // Edit existing suggestion
+    if (isEditMode.value && editingTaskId.value) {
+      // ---- 编辑已有作业任务 ----
       const subtasksPayload = validSubtasks.map((st: SubtaskFormItem, idx: number) => ({
         content: st.content.trim(),
         sortOrder: idx,
       }));
-      await aiApi.updateSuggestion(
-        editingSuggestionId.value,
-        currentChildId.value,
-        {
+
+      if (editingSuggestionId.value) {
+        // 已有建议：更新建议（含子任务）
+        await aiApi.updateSuggestion(
+          editingSuggestionId.value,
+          currentChildId.value,
+          {
+            subject: formData.subject,
+            content: formData.name,
+            suggestedPoints: formData.points,
+            deadline: formData.deadline || undefined,
+            extendDays,
+            subtasks: subtasksPayload,
+          },
+        );
+      } else if (subtasksPayload.length > 0) {
+        // 单项任务 → 添加子任务：新建建议并关联到当前任务（不新建任务）
+        const created = await aiApi.createSuggestion({
+          childId: currentChildId.value,
           subject: formData.subject,
           content: formData.name,
           suggestedPoints: formData.points,
           deadline: formData.deadline || undefined,
           extendDays,
-          subtasks: validSubtasks.length > 0 ? subtasksPayload : [],
-        },
-      );
+          subtasks: subtasksPayload,
+        });
+        await aiApi.confirmSuggestions({
+          childId: currentChildId.value,
+          suggestionIds: [created.suggestion.id],
+          taskId: editingTaskId.value,
+        });
+        editingSuggestionId.value = created.suggestion.id;
+      }
+
+      // 更新任务实例字段
+      await taskApi.updateTask(editingTaskId.value, {
+        name: formData.name.trim(),
+        subject: formData.subject,
+        points: formData.points,
+        deadline: formData.deadline || null,
+        extendDays,
+        taskDate: formData.taskDate || today.value,
+      });
       toast.success('作业任务修改成功');
     } else if (validSubtasks.length > 0) {
       // Use suggestion API for tasks with subtasks
@@ -359,6 +391,7 @@ const resetForm = (): void => {
   formSubtasks.splice(0, formSubtasks.length);
   isEditMode.value = false;
   editingSuggestionId.value = '';
+  editingTaskId.value = '';
 };
 
 const openCreateDialog = (): void => {
@@ -382,8 +415,9 @@ const openEditTask = (task: TaskInstance): void => {
       content: st.content,
     })),
   );
-  // 优先用任务实例上的 suggestionId（AI 导入确认后会有），否则回退到 task.id
-  editingSuggestionId.value = task.suggestionId ?? task.id;
+  // 优先用任务实例上的 suggestionId（AI 导入确认后会有），否则为空（单项任务）
+  editingSuggestionId.value = task.suggestionId ?? '';
+  editingTaskId.value = task.id;
   isEditMode.value = true;
   dialogOpen.value = true;
 };

@@ -196,7 +196,11 @@ export class AiController {
     const { userId } = req.userContext;
     const family = await this.familyService.getOrCreateFamily(userId);
     await this.assertChildInFamily(body.childId, family.id);
-    return this.aiService.confirmSuggestions(body.suggestionIds, body.childId);
+    return this.aiService.confirmSuggestions(
+      body.suggestionIds,
+      body.childId,
+      body.taskId,
+    );
   }
 
   @NeedLogin()

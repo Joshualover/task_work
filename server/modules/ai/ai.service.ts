@@ -882,6 +882,7 @@ export class AiService {
   async confirmSuggestions(
     suggestionIds: string[],
     childId: string,
+    taskId?: string,
   ): Promise<{ confirmedCount: number }> {
     if (suggestionIds.length === 0) {
       return { confirmedCount: 0 };
@@ -909,6 +910,23 @@ export class AiService {
         .update(homeworkSuggestion)
         .set({ status: 'confirmed' })
         .where(inArray(homeworkSuggestion.id, suggestions.map((s) => s.id)));
+
+      // 编辑已有任务：把建议关联到任务实例（不新建任务）
+      if (taskId) {
+        const s = suggestions[0];
+        await tx
+          .update(taskInstance)
+          .set({
+            suggestionId: s.id,
+            name: s.content,
+            subject: s.subject,
+            points: s.suggestedPoints,
+            deadline: s.deadline ?? null,
+            extendDays: s.extendDays ?? 0,
+          })
+          .where(eq(taskInstance.id, taskId));
+        return { confirmedCount: suggestions.length };
+      }
 
       const taskValues = suggestions.map((s) => ({
         childId: s.childId,

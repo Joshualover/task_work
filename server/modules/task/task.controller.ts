@@ -22,6 +22,7 @@ import type {
   TaskListResponse,
   TaskListQuery,
   CreateHomeworkTaskRequest,
+  UpdateHomeworkTaskRequest,
   SubmitTaskRequest,
   ReviewTaskRequest,
   TaskInstance,
@@ -185,6 +186,37 @@ class SubmitTaskDto implements SubmitTaskRequest {
   completionNote?: string;
 }
 
+class UpdateHomeworkTaskDto implements UpdateHomeworkTaskRequest {
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  subject?: string | null;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  points?: number;
+
+  @IsOptional()
+  @IsString()
+  deadline?: string | null;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  extendDays?: number;
+
+  @IsOptional()
+  @IsString()
+  taskDate?: string;
+}
+
 class ReviewTaskDto implements ReviewTaskRequest {
   @IsBoolean()
   @Type(() => Boolean)
@@ -309,6 +341,19 @@ export class TaskController {
   ): Promise<{ task: TaskInstance }> {
     await this.assertChild(req, dto.childId);
     const task = await this.taskService.createHomeworkTask(dto);
+    return { task };
+  }
+
+  @NeedLogin()
+  @Patch(':id')
+  async updateHomeworkTask(
+    @Req() req: Request,
+    @Param('id') id: string,
+    @Body() dto: UpdateHomeworkTaskDto,
+  ): Promise<{ task: TaskInstance }> {
+    const existing = await this.taskService.getTask(id);
+    await this.assertChild(req, existing.childId);
+    const task = await this.taskService.updateHomeworkTask(id, dto);
     return { task };
   }
 

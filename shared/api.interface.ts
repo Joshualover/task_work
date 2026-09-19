@@ -243,6 +243,16 @@ export interface DeleteTaskRequest {
   id: string;
 }
 
+/** 编辑作业任务（任务实例字段） */
+export interface UpdateHomeworkTaskRequest {
+  name?: string;
+  subject?: string | null;
+  points?: number;
+  deadline?: string | null;
+  extendDays?: number;
+  taskDate?: string;
+}
+
 // 积分流水
 export interface PointTransactionListQuery {
   childId: string;
@@ -361,6 +371,8 @@ export interface HomeworkSuggestionListResponse {
 export interface ConfirmSuggestionsRequest {
   suggestionIds: string[];
   childId: string;
+  /** 编辑已有任务时传入：把建议关联到该任务，不新建任务 */
+  taskId?: string;
 }
 export interface UpdateSuggestionRequest {
   subject?: string;
