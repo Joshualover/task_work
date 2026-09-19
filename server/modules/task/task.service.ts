@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
-import { eq, and, asc, count, lt, inArray } from 'drizzle-orm';
+import { eq, and, asc, count, lt, inArray, sql } from 'drizzle-orm';
 import type {
   TaskTemplate,
   TaskInstance,
@@ -371,6 +371,7 @@ export class TaskService {
         difficultyMultiplier: '1.0',
         finalPoints: null,
         deadline: data.deadline ?? null,
+        extendDays: data.extendDays ?? 0,
         taskDate: data.taskDate,
         status: 'pending',
         submitTime: null,
@@ -393,7 +394,10 @@ export class TaskService {
         completionNote: completionNote ?? null,
       })
       .where(
-        and(eq(taskInstance.id, taskId), eq(taskInstance.status, 'pending')),
+        and(
+          eq(taskInstance.id, taskId),
+          inArray(taskInstance.status, ['pending', 'overdue']),
+        ),
       )
       .returning();
 
@@ -543,7 +547,7 @@ export class TaskService {
   }
 
   async markOverdueTasks(childId: string, date: string): Promise<number> {
-    // 作业任务：有截止日期且已过期仍未提交
+    // 作业任务：截止日 + 顺延天数 已过仍未提交（顺延期内不算逾期）
     const homeworkOverdue = await this.db
       .update(taskInstance)
       .set({ status: 'overdue' })
@@ -552,7 +556,7 @@ export class TaskService {
           eq(taskInstance.childId, childId),
           eq(taskInstance.type, 'homework'),
           eq(taskInstance.status, 'pending'),
-          lt(taskInstance.deadline, date),
+          sql`(${taskInstance.deadline} + make_interval(days => ${taskInstance.extendDays})) < ${date}::date`,
         ),
       )
       .returning({ id: taskInstance.id });
@@ -604,6 +608,7 @@ export class TaskService {
       difficultyMultiplier: Number(row.difficultyMultiplier),
       finalPoints: row.finalPoints ?? null,
       deadline: row.deadline ? String(row.deadline) : null,
+      extendDays: row.extendDays ?? 0,
       taskDate: String(row.taskDate),
       status: row.status as TaskStatus,
       submitTime: row.submitTime ? row.submitTime.toISOString() : null,

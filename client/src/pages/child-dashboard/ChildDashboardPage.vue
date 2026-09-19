@@ -159,6 +159,15 @@
                 <p v-if="task.subject" class="mt-1 text-sm text-gray-500">
                   科目：{{ task.subject }}
                 </p>
+                <p
+                  v-if="task.type === 'homework' && task.deadline"
+                  class="mt-1 text-xs text-gray-400"
+                >
+                  截止 {{ task.deadline }}
+                  <span v-if="(task.extendDays ?? 0) > 0" class="text-[#FF8A3D]">
+                    （可顺延 {{ task.extendDays }} 天，至 {{ effectiveDeadline(task) }}）
+                  </span>
+                </p>
 
                 <!-- 子任务列表 -->
                 <div
@@ -355,6 +364,16 @@ const submitDialogOpen = computed({
 });
 
 const todayStr = computed(() => todayString());
+
+/** 作业的实际可完成截止日 = 截止日 + 顺延天数 */
+const effectiveDeadline = (task: TaskInstance): string | null => {
+  if (!task.deadline) return null;
+  const days = task.extendDays ?? 0;
+  if (days <= 0) return task.deadline;
+  const d = new Date(`${task.deadline}T00:00:00`);
+  d.setDate(d.getDate() + days);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
 
 const completedCount = computed(() =>
   tasks.value.filter((t: TaskInstance) => t.status === 'completed').length,

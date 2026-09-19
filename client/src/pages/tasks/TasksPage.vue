@@ -14,6 +14,7 @@ import Badge from '@/components/ui/Badge.vue';
 import Textarea from '@/components/ui/Textarea.vue';
 import Select from '@/components/ui/Select.vue';
 import DatePicker from '@/components/ui/DatePicker.vue';
+import Switch from '@/components/ui/Switch.vue';
 import { taskApi, aiApi } from '@/api';
 import { useChildStore } from '@/stores/child';
 import { todayString } from '@/utils/date';
@@ -57,6 +58,10 @@ interface FormData {
   points: number;
   deadline: string;
   taskDate: string;
+  /** 遇周末/节假日顺延 */
+  extendHoliday: boolean;
+  /** 顺延天数 */
+  extendDays: number;
 }
 
 interface SubtaskFormItem {
@@ -76,6 +81,8 @@ const formData = reactive<FormData>({
   points: 10,
   deadline: '',
   taskDate: '',
+  extendHoliday: false,
+  extendDays: 2,
 });
 const formSubtasks = reactive<SubtaskFormItem[]>([]);
 const isEditMode = ref<boolean>(false);
@@ -149,6 +156,37 @@ const getCompletedSubtaskCount = (task: TaskInstance): number => {
 };
 
 const today = computed<string>(() => todayString());
+
+/** 作业的实际可完成截止日 = 截止日 + 顺延天数 */
+const effectiveDeadline = (task: TaskInstance): string | null => {
+  if (!task.deadline) return null;
+  const days = task.extendDays ?? 0;
+  if (days <= 0) return task.deadline;
+  const d = new Date(`${task.deadline}T00:00:00`);
+  d.setDate(d.getDate() + days);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+/** 截止日是否为周五（提示可顺延到周日） */
+const deadlineIsFriday = computed<boolean>(() => {
+  if (!formData.deadline) return false;
+  return new Date(`${formData.deadline}T00:00:00`).getDay() === 5;
+});
+
+/** 弹窗内预览顺延后的截止日 */
+const effectiveDeadlinePreview = computed<string | null>(() => {
+  if (!formData.deadline || !formData.extendHoliday) return null;
+  const days = Math.max(0, Math.floor(Number(formData.extendDays) || 0));
+  if (days <= 0) return null;
+  const d = new Date(`${formData.deadline}T00:00:00`);
+  d.setDate(d.getDate() + days);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+});
+
+function applyWeekendExtend(): void {
+  formData.extendHoliday = true;
+  formData.extendDays = 2;
+}
 
 const fetchTasks = async (): Promise<void> => {
   if (!currentChildId.value) return;
@@ -239,6 +277,11 @@ const handleToggleSubtask = async (task: TaskInstance, subtask: HomeworkSubtask)
 const handleCreateHomework = async (): Promise<void> => {
   if (!formData.name.trim() || !currentChildId.value) return;
 
+  // 顺延天数（启用顺延才有值）
+  const extendDays = formData.extendHoliday
+    ? Math.max(0, Math.floor(Number(formData.extendDays) || 0))
+    : 0;
+
   // Filter out empty subtask rows
   const validSubtasks = formSubtasks.filter((st: SubtaskFormItem) => st.content.trim() !== '');
 
@@ -257,6 +300,7 @@ const handleCreateHomework = async (): Promise<void> => {
           content: formData.name,
           suggestedPoints: formData.points,
           deadline: formData.deadline || undefined,
+          extendDays,
           subtasks: validSubtasks.length > 0 ? subtasksPayload : [],
         },
       );
@@ -273,6 +317,7 @@ const handleCreateHomework = async (): Promise<void> => {
         content: formData.name,
         suggestedPoints: formData.points,
         deadline: formData.deadline || undefined,
+        extendDays,
         subtasks: subtasksPayload,
       });
       // Auto-confirm the suggestion so it appears in the task pool
@@ -288,6 +333,7 @@ const handleCreateHomework = async (): Promise<void> => {
         subject: formData.subject,
         points: formData.points,
         deadline: formData.deadline || undefined,
+        extendDays,
         taskDate: formData.taskDate || today.value,
       };
       await taskApi.createHomeworkTask(data);
@@ -308,6 +354,8 @@ const resetForm = (): void => {
   formData.points = 10;
   formData.deadline = '';
   formData.taskDate = today.value;
+  formData.extendHoliday = false;
+  formData.extendDays = 2;
   formSubtasks.splice(0, formSubtasks.length);
   isEditMode.value = false;
   editingSuggestionId.value = '';
@@ -324,6 +372,8 @@ const openEditTask = (task: TaskInstance): void => {
   formData.subject = task.subject ?? '语文';
   formData.points = task.points;
   formData.deadline = task.deadline ?? '';
+  formData.extendHoliday = (task.extendDays ?? 0) > 0;
+  formData.extendDays = (task.extendDays ?? 0) > 0 ? task.extendDays : 2;
   formData.taskDate = task.taskDate;
   formSubtasks.splice(
     0,
@@ -1387,6 +1437,49 @@ const removeImage = (index: number): void => {
             v-model:modelValue="formData.deadline"
             placeholder="请选择截止日期"
           />
+        </div>
+
+        <!-- 遇周末/节假日顺延 -->
+        <div class="space-y-2 rounded-xl bg-orange-50/60 p-3">
+          <div class="flex items-center justify-between gap-3">
+            <div class="min-w-0">
+              <p class="text-sm font-medium text-[#1F2329]">遇周末/节假日顺延</p>
+              <p class="mt-0.5 text-xs text-gray-500">
+                开启后，作业在截止日之后的 N 天内仍可完成，不算逾期
+              </p>
+            </div>
+            <Switch
+              :checked="formData.extendHoliday"
+              @update:checked="(v: boolean) => formData.extendHoliday = v"
+              class="data-[state=checked]:bg-[#FF8A3D]"
+            />
+          </div>
+          <div v-if="formData.extendHoliday" class="flex flex-wrap items-center gap-2">
+            <span class="text-sm text-gray-600">顺延</span>
+            <div class="w-24">
+              <Input
+                type="number"
+                :value="String(formData.extendDays)"
+                @update:value="(v: string | number) => formData.extendDays = Number(v) || 0"
+                class="rounded-xl text-sm h-9"
+              />
+            </div>
+            <span class="text-sm text-gray-600">天</span>
+            <span
+              v-if="effectiveDeadlinePreview"
+              class="ml-auto text-xs font-medium text-[#FF8A3D]"
+            >
+              顺延至 {{ effectiveDeadlinePreview }}
+            </span>
+          </div>
+          <button
+            v-if="deadlineIsFriday && !formData.extendHoliday"
+            type="button"
+            class="text-xs text-[#FF8A3D] underline"
+            @click="applyWeekendExtend"
+          >
+            周五布置？一键顺延 2 天（到周日）
+          </button>
         </div>
 
         <!-- Subtasks section -->

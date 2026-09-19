@@ -536,6 +536,7 @@ export class AiService {
       quantity: row.quantity ?? 1,
       suggestedPoints: row.suggestedPoints,
       deadline: row.deadline ?? null,
+      extendDays: row.extendDays ?? 0,
       status: row.status as 'pending' | 'confirmed' | 'discarded',
       createdAt: row.createdAt.toISOString(),
       subtasks,
@@ -916,6 +917,8 @@ export class AiService {
         subject: s.subject,
         points: s.suggestedPoints,
         suggestionId: s.id,
+        deadline: s.deadline ?? null,
+        extendDays: s.extendDays ?? 0,
         taskDate: todayStr,
         status: 'pending' as const,
       }));
@@ -950,6 +953,9 @@ export class AiService {
       if (data.quantity !== undefined) patch.quantity = data.quantity;
       if (data.deadline !== undefined) {
         patch.deadline = data.deadline ? data.deadline.split('T')[0] : null;
+      }
+      if (data.extendDays !== undefined) {
+        patch.extendDays = data.extendDays;
       }
 
       // 如果有 subtasks 字段，做全量替换（子任务不计积分，不影响 suggestedPoints）
@@ -1107,6 +1113,7 @@ export class AiService {
           quantity: dto.quantity ?? 1,
           suggestedPoints,
           deadline: dto.deadline ? dto.deadline.split('T')[0] : null,
+          extendDays: dto.extendDays ?? 0,
           status: 'pending' as const,
         })
         .returning();

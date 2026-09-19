@@ -45,6 +45,8 @@ export interface TaskInstance {
   difficultyMultiplier: number;
   finalPoints: number | null;
   deadline: string | null;
+  /** 截止日后的顺延天数（顺延期内不算逾期） */
+  extendDays: number;
   taskDate: string;
   status: TaskStatus;
   submitTime: string | null;
@@ -138,6 +140,8 @@ export interface HomeworkSuggestion {
   quantity: number;
   suggestedPoints: number;
   deadline: string | null;
+  /** 截止日后的顺延天数 */
+  extendDays: number;
   status: 'pending' | 'confirmed' | 'discarded';
   createdAt: string;
   subtasks: HomeworkSubtask[];
@@ -223,6 +227,8 @@ export interface CreateHomeworkTaskRequest {
   subject?: string;
   points: number;
   deadline?: string;
+  /** 截止日后的顺延天数（遇周末/节假日） */
+  extendDays?: number;
   taskDate: string;
 }
 export interface SubmitTaskRequest {
@@ -362,6 +368,7 @@ export interface UpdateSuggestionRequest {
   quantity?: number;
   suggestedPoints?: number;
   deadline?: string;
+  extendDays?: number;
   subtasks?: Array<{
     id?: string;
     content: string;
@@ -377,6 +384,7 @@ export interface CreateSuggestionRequest {
   quantity?: number;
   suggestedPoints: number;
   deadline?: string;
+  extendDays?: number;
   subtasks?: Array<{
     content: string;
     points?: number;

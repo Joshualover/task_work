@@ -152,6 +152,8 @@ export const homeworkSuggestion = pgTable("homework_suggestion", {
   quantity: integer("quantity").default(1),
   suggestedPoints: integer("suggested_points").notNull().default(10),
   deadline: date("deadline"),
+  // 截止日后的顺延天数（创建任务实例时复制过去）
+  extendDays: integer("extend_days").notNull().default(0),
   status: varchar("status", { length: 20 }).notNull().default('pending'),
   // System field: Creation time (auto-filled, do not modify)
   createdAt: customTimestamptz("_created_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
@@ -355,6 +357,8 @@ export const taskInstance = pgTable("task_instance", {
   difficultyMultiplier: numeric("difficulty_multiplier").notNull().default('1.0'),
   finalPoints: integer("final_points"),
   deadline: date("deadline"),
+  // 截止日后的顺延天数（遇周末/节假日），顺延期内不算逾期
+  extendDays: integer("extend_days").notNull().default(0),
   taskDate: date("task_date").notNull(),
   status: varchar("status", { length: 20 }).notNull().default('pending'),
   submitTime: customTimestamptz("submit_time", { precision: 3 }),
