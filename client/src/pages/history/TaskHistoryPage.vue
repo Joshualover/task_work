@@ -25,7 +25,7 @@
 
     <template v-else>
       <!-- 月份切换 -->
-      <div class="mb-3 flex items-center justify-between rounded-2xl bg-white px-3 py-2 shadow-md">
+      <div class="mx-auto mb-3 flex max-w-lg items-center justify-between rounded-2xl bg-white px-3 py-2 shadow-md">
         <button
           type="button"
           class="flex h-9 w-9 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-orange-50 hover:text-[#FF8A3D]"
@@ -51,8 +51,8 @@
       </div>
 
       <!-- 日历 -->
-      <div class="rounded-2xl bg-white p-3 shadow-md sm:p-4">
-        <div class="mb-2 grid grid-cols-7 gap-1 text-center text-xs text-gray-400">
+      <div class="mx-auto max-w-lg rounded-2xl bg-white p-3 shadow-md sm:p-4">
+        <div class="mb-2 grid grid-cols-7 gap-1 text-center text-sm text-gray-500">
           <span v-for="w in WEEKDAYS" :key="w">{{ w }}</span>
         </div>
         <div v-if="loading" class="py-10 text-center text-sm text-gray-400">
@@ -64,7 +64,7 @@
             <button
               v-else
               type="button"
-              class="relative flex aspect-square flex-col items-center justify-center rounded-xl text-sm transition-colors"
+              class="relative flex aspect-square flex-col items-center justify-center rounded-xl text-base font-semibold transition-colors"
               :class="cellClass(cell)"
               @click="selectedDate = dateKey(cell)"
             >
@@ -83,7 +83,7 @@
       </div>
 
       <!-- 选中日详情 -->
-      <div class="mt-4 rounded-2xl bg-white p-4 shadow-md">
+      <div class="mx-auto mt-4 max-w-2xl rounded-2xl bg-white p-4 shadow-md">
         <div class="mb-3 flex items-center justify-between">
           <h2 class="text-base font-semibold text-[#1F2329]">
             {{ selectedDate }}
