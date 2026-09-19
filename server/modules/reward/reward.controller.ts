@@ -34,6 +34,8 @@ class CreateRewardBody implements CreateRewardRequest {
   frequency?: RewardFrequency;
   limitCount?: number | null;
   limitPoints?: number | null;
+  rewardType?: 'item' | 'allowance';
+  allowanceAmount?: number | null;
 }
 
 class UpdateRewardBody implements UpdateRewardRequest {
@@ -46,6 +48,8 @@ class UpdateRewardBody implements UpdateRewardRequest {
   frequency?: RewardFrequency;
   limitCount?: number | null;
   limitPoints?: number | null;
+  rewardType?: 'item' | 'allowance';
+  allowanceAmount?: number | null;
 }
 
 function toResponse(r: RewardRow) {
@@ -61,6 +65,8 @@ function toResponse(r: RewardRow) {
     frequency: r.frequency,
     limitCount: r.limitCount,
     limitPoints: r.limitPoints,
+    rewardType: r.rewardType,
+    allowanceAmount: r.allowanceAmount,
     createdAt: r.createdAt.toISOString(),
   };
 }

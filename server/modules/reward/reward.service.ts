@@ -23,6 +23,8 @@ export interface RewardRow {
   frequency: RewardFrequency;
   limitCount: number | null;
   limitPoints: number | null;
+  rewardType: 'item' | 'allowance';
+  allowanceAmount: number | null;
   createdAt: Date;
 }
 
@@ -54,6 +56,8 @@ export class RewardService {
       frequency: (row.frequency ?? 'unlimited') as RewardFrequency,
       limitCount: row.limitCount ?? null,
       limitPoints: row.limitPoints ?? null,
+      rewardType: (row.rewardType ?? 'item') as 'item' | 'allowance',
+      allowanceAmount: row.allowanceAmount ?? null,
       createdAt: row.createdAt,
     };
   }
@@ -74,6 +78,16 @@ export class RewardService {
     const n = Number(value);
     if (!Number.isFinite(n) || n <= 0) {
       throw new BadRequestException(`${label}必须为正整数`);
+    }
+    return Math.floor(n);
+  }
+
+  /** 零花钱金额（分），必须为正整数 */
+  private normalizeAllowanceAmount(value: number | null | undefined): number | null {
+    if (value === undefined || value === null) return null;
+    const n = Number(value);
+    if (!Number.isFinite(n) || n <= 0) {
+      throw new BadRequestException('零花钱金额必须大于 0');
     }
     return Math.floor(n);
   }
@@ -122,6 +136,7 @@ export class RewardService {
 
     const frequency = this.normalizeFrequency(data.frequency);
     const unlimited = frequency === 'unlimited';
+    const rewardType = data.rewardType === 'allowance' ? 'allowance' : 'item';
 
     const inserted = await this.db
       .insert(reward)
@@ -139,6 +154,11 @@ export class RewardService {
         limitPoints: unlimited
           ? null
           : this.normalizeLimit(data.limitPoints, '积分上限'),
+        rewardType,
+        allowanceAmount:
+          rewardType === 'allowance'
+            ? this.normalizeAllowanceAmount(data.allowanceAmount)
+            : null,
       })
       .returning();
 
@@ -197,6 +217,12 @@ export class RewardService {
     if (data.limitPoints !== undefined) {
       patch.limitPoints = this.normalizeLimit(data.limitPoints, '积分上限');
     }
+    if (data.rewardType !== undefined) {
+      patch.rewardType = data.rewardType === 'allowance' ? 'allowance' : 'item';
+    }
+    if (data.allowanceAmount !== undefined) {
+      patch.allowanceAmount = this.normalizeAllowanceAmount(data.allowanceAmount);
+    }
 
     if (Object.keys(patch).length === 0) {
       throw new BadRequestException('未提供可更新字段');
@@ -210,6 +236,13 @@ export class RewardService {
       patch.frequency = 'unlimited';
       patch.limitCount = null;
       patch.limitPoints = null;
+    }
+
+    // 非零花钱奖励清空金额
+    const effectiveRewardType =
+      (patch.rewardType ?? existing[0].rewardType ?? 'item') as 'item' | 'allowance';
+    if (effectiveRewardType !== 'allowance') {
+      patch.allowanceAmount = null;
     }
 
     const updated = await this.db

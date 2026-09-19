@@ -32,6 +32,7 @@ export class ChildService {
       name: row.name,
       avatarUrl: row.avatarUrl ?? null,
       points: row.points,
+      allowanceBalance: row.allowanceBalance ?? 0,
       isActive: row.isActive,
       createdAt: row.createdAt.toISOString(),
     }));
@@ -55,6 +56,7 @@ export class ChildService {
       name: row.name,
       avatarUrl: row.avatarUrl ?? null,
       points: row.points,
+      allowanceBalance: row.allowanceBalance ?? 0,
       isActive: row.isActive,
       createdAt: row.createdAt.toISOString(),
     };
@@ -88,6 +90,7 @@ export class ChildService {
       name: row.name,
       avatarUrl: row.avatarUrl ?? null,
       points: row.points,
+      allowanceBalance: row.allowanceBalance ?? 0,
       isActive: row.isActive,
       createdAt: row.createdAt.toISOString(),
     };
@@ -138,6 +141,7 @@ export class ChildService {
       name: row.name,
       avatarUrl: row.avatarUrl ?? null,
       points: row.points,
+      allowanceBalance: row.allowanceBalance ?? 0,
       isActive: row.isActive,
       createdAt: row.createdAt.toISOString(),
     };
@@ -165,6 +169,7 @@ export class ChildService {
       name: row.name,
       avatarUrl: row.avatarUrl ?? null,
       points: row.points,
+      allowanceBalance: row.allowanceBalance ?? 0,
       isActive: row.isActive,
       createdAt: row.createdAt.toISOString(),
     };

@@ -24,6 +24,7 @@ const ChildDashboardPage = () =>
   import('@/pages/child-dashboard/ChildDashboardPage.vue');
 const PomodoroPage = () => import('@/pages/pomodoro/PomodoroPage.vue');
 const TaskHistoryPage = () => import('@/pages/history/TaskHistoryPage.vue');
+const AllowancePage = () => import('@/pages/allowance/AllowancePage.vue');
 const NotFound = () => import('@/pages/NotFound/NotFound.vue');
 
 /** 孩子账号可访问的页面 */
@@ -33,6 +34,7 @@ const CHILD_ROUTES = [
   '/child-history',
   '/child-points',
   '/child-rewards',
+  '/child-allowance',
 ];
 
 const routes: RouteRecordRaw[] = [
@@ -86,6 +88,13 @@ const routes: RouteRecordRaw[] = [
         path: 'rewards',
         name: 'Rewards',
         component: RewardsPage,
+        props: { mode: 'parent' },
+        meta: { mode: 'parent' },
+      },
+      {
+        path: 'allowance',
+        name: 'Allowance',
+        component: AllowancePage,
         props: { mode: 'parent' },
         meta: { mode: 'parent' },
       },
@@ -147,6 +156,13 @@ const routes: RouteRecordRaw[] = [
         path: 'child-rewards',
         name: 'ChildRewards',
         component: RewardsPage,
+        props: { mode: 'child' },
+        meta: { mode: 'child' },
+      },
+      {
+        path: 'child-allowance',
+        name: 'ChildAllowance',
+        component: AllowancePage,
         props: { mode: 'child' },
         meta: { mode: 'child' },
       },

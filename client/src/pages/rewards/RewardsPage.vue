@@ -8,12 +8,14 @@ import Button from '@/components/ui/Button.vue';
 import Dialog from '@/components/ui/Dialog.vue';
 import Input from '@/components/ui/Input.vue';
 import Select from '@/components/ui/Select.vue';
+import Switch from '@/components/ui/Switch.vue';
 import { rewardApi, pointApi, redemptionApi } from '@/api';
 import { useChildStore } from '@/stores/child';
 import type { Reward, RewardUsage } from '@shared/api.interface';
 import Image from '@/components/ui/Image.vue';
 import { toast } from '@/components/ui/toast';
 import { getErrorMessage } from '@/utils/error';
+import { fenToYuan, yuanToFen } from '@/utils/money';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 
 const props = withDefaults(defineProps<{
@@ -31,6 +33,8 @@ interface RewardFormData {
   frequency: 'unlimited' | 'daily' | 'weekly' | 'monthly';
   limitCount: string;
   limitPoints: string;
+  rewardType: 'item' | 'allowance';
+  allowanceAmount: string;
 }
 
 const FREQUENCY_OPTIONS = [
@@ -58,6 +62,8 @@ const formData = reactive<RewardFormData>({
   frequency: 'unlimited',
   limitCount: '',
   limitPoints: '',
+  rewardType: 'item',
+  allowanceAmount: '',
 });
 const usageMap = ref<Record<string, RewardUsage>>({});
 const submitting = ref<boolean>(false);
@@ -131,6 +137,8 @@ const openCreateDialog = () => {
   formData.frequency = 'unlimited';
   formData.limitCount = '';
   formData.limitPoints = '';
+  formData.rewardType = 'item';
+  formData.allowanceAmount = '';
   dialogOpen.value = true;
 };
 
@@ -144,6 +152,9 @@ const openEditDialog = (reward: Reward) => {
   formData.frequency = reward.frequency ?? 'unlimited';
   formData.limitCount = reward.limitCount != null ? String(reward.limitCount) : '';
   formData.limitPoints = reward.limitPoints != null ? String(reward.limitPoints) : '';
+  formData.rewardType = reward.rewardType ?? 'item';
+  formData.allowanceAmount =
+    reward.allowanceAmount != null ? fenToYuan(reward.allowanceAmount) : '';
   dialogOpen.value = true;
 };
 
@@ -173,6 +184,11 @@ const handleSubmit = async () => {
         unlimited || !formData.limitPoints
           ? null
           : parseInt(formData.limitPoints, 10),
+      rewardType: formData.rewardType,
+      allowanceAmount:
+        formData.rewardType === 'allowance' && formData.allowanceAmount
+          ? yuanToFen(formData.allowanceAmount)
+          : null,
     };
 
     if (editingReward.value) {
@@ -342,6 +358,29 @@ const handleConfirmRedeemOpenChange = (open: boolean) => {
                 type="number"
                 placeholder="请输入积分值"
                 v-model:value="formData.pointsRequired"
+              />
+            </div>
+            <div class="flex items-center justify-between gap-3 rounded-xl bg-blue-50/60 p-3">
+              <div class="min-w-0">
+                <p class="text-sm font-medium text-[#1F2329]">这是「零花钱」奖励</p>
+                <p class="mt-0.5 text-xs text-gray-500">
+                  孩子兑换并审批通过后，金额计入零花钱收入
+                </p>
+              </div>
+              <Switch
+                :checked="formData.rewardType === 'allowance'"
+                @update:checked="(v: boolean) => formData.rewardType = v ? 'allowance' : 'item'"
+                class="data-[state=checked]:bg-[#52C41A]"
+              />
+            </div>
+            <div v-if="formData.rewardType === 'allowance'">
+              <label class="mb-1 block text-sm font-medium text-gray-700">
+                零花钱金额（元）*
+              </label>
+              <Input
+                type="number"
+                placeholder="如：5"
+                v-model:value="formData.allowanceAmount"
               />
             </div>
             <div>
@@ -519,6 +558,12 @@ const handleConfirmRedeemOpenChange = (open: boolean) => {
             class="mt-1 text-xs font-medium text-[#A855F7]"
           >
             {{ limitSummary(reward) }}
+          </p>
+          <p
+            v-if="reward.rewardType === 'allowance' && reward.allowanceAmount"
+            class="mt-1 text-xs font-semibold text-[#52C41A]"
+          >
+            💰 兑换可得 ¥{{ fenToYuan(reward.allowanceAmount) }} 零花钱
           </p>
           <p
             v-if="mode === 'child' && usageSummary(reward)"

@@ -10,7 +10,7 @@ import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack
 import { eq, and, desc, inArray, gte, lt } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
 
-import { redemption, reward, child, pointTransaction } from '@server/database/schema';
+import { redemption, reward, child, pointTransaction, allowanceTransaction } from '@server/database/schema';
 import { periodRangeUtc } from '@server/common/utils/date';
 import type { RedemptionStatus } from '@shared/api.interface';
 
@@ -328,6 +328,37 @@ export class RedemptionService {
           reason: reviewNote ? `兑换被拒绝：${reviewNote}` : '兑换申请被拒绝',
           operator: operatorId ?? undefined,
         });
+      }
+
+      // 审批通过：若为「零花钱」奖励，同时计入零花钱收入
+      if (approved) {
+        const [rw] = await tx
+          .select()
+          .from(reward)
+          .where(eq(reward.id, record.rewardId))
+          .limit(1);
+        if (rw && rw.rewardType === 'allowance' && (rw.allowanceAmount ?? 0) > 0) {
+          const amount = rw.allowanceAmount as number;
+          const [childRow] = await tx
+            .update(child)
+            .set({
+              allowanceBalance: sql`${child.allowanceBalance} + ${amount}`,
+            })
+            .where(eq(child.id, record.childId))
+            .returning({ balance: child.allowanceBalance });
+          if (childRow) {
+            await tx.insert(allowanceTransaction).values({
+              childId: record.childId,
+              changeAmount: amount,
+              balanceAfter: childRow.balance,
+              type: 'income',
+              relatedType: 'reward',
+              relatedId: record.id,
+              reason: `兑换零花钱：${rw.name}`,
+              operator: operatorId ?? null,
+            });
+          }
+        }
       }
 
       return updated[0];

@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS child (
   name varchar(50) NOT NULL,
   avatar_url text,
   points integer NOT NULL DEFAULT 0,
+  allowance_balance integer NOT NULL DEFAULT 0,
   is_active boolean NOT NULL DEFAULT true,
   _created_at timestamptz(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   _created_by user_profile DEFAULT (CASE WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL::user_profile END),
@@ -184,6 +185,8 @@ CREATE TABLE IF NOT EXISTS reward (
   frequency varchar(20) NOT NULL DEFAULT 'unlimited',
   limit_count integer,
   limit_points integer,
+  reward_type varchar(20) NOT NULL DEFAULT 'item',
+  allowance_amount integer,
   _created_at timestamptz(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   _created_by user_profile DEFAULT (CASE WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL::user_profile END),
   _updated_at timestamptz(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -250,3 +253,41 @@ CREATE TABLE IF NOT EXISTS app_user (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_app_user_username ON app_user (username);
 CREATE INDEX IF NOT EXISTS idx_app_user_family_id ON app_user (family_id);
 CREATE INDEX IF NOT EXISTS idx_app_user_child_id ON app_user (child_id);
+
+-- 零花钱流水
+CREATE TABLE IF NOT EXISTS allowance_transaction (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  child_id uuid NOT NULL,
+  change_amount integer NOT NULL,
+  balance_after integer NOT NULL,
+  type varchar(20) NOT NULL,
+  related_type varchar(20),
+  related_id uuid,
+  reason varchar(500),
+  operator user_profile,
+  _created_at timestamptz(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  _created_by user_profile DEFAULT (CASE WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL::user_profile END),
+  _updated_at timestamptz(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  _updated_by user_profile DEFAULT (CASE WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL::user_profile END),
+  CONSTRAINT allowance_transaction_child_id_fkey FOREIGN KEY (child_id) REFERENCES child(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_allowance_transaction_child_id ON allowance_transaction (child_id);
+CREATE INDEX IF NOT EXISTS idx_allowance_transaction_created_at ON allowance_transaction (_created_at);
+
+-- 零花钱使用申请
+CREATE TABLE IF NOT EXISTS allowance_request (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  child_id uuid NOT NULL,
+  amount integer NOT NULL,
+  purpose varchar(200),
+  status varchar(20) NOT NULL DEFAULT 'pending',
+  review_note varchar(500),
+  reviewed_at timestamptz(3),
+  _created_at timestamptz(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  _created_by user_profile DEFAULT (CASE WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL::user_profile END),
+  _updated_at timestamptz(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  _updated_by user_profile DEFAULT (CASE WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL::user_profile END),
+  CONSTRAINT allowance_request_child_id_fkey FOREIGN KEY (child_id) REFERENCES child(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_allowance_request_child_id ON allowance_request (child_id);
+CREATE INDEX IF NOT EXISTS idx_allowance_request_status ON allowance_request (status);

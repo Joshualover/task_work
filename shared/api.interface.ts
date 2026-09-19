@@ -12,6 +12,8 @@ export interface Child {
   name: string;
   avatarUrl: string | null;
   points: number;
+  /** 零花钱余额（单位：分） */
+  allowanceBalance: number;
   isActive: boolean;
   createdAt: string;
 }
@@ -74,6 +76,8 @@ export interface PointTransaction {
 
 export type RewardFrequency = 'unlimited' | 'daily' | 'weekly' | 'monthly';
 
+export type RewardType = 'item' | 'allowance';
+
 export interface Reward {
   id: string;
   familyId: string;
@@ -89,6 +93,10 @@ export interface Reward {
   limitCount: number | null;
   /** 每周期可消耗积分上限（null = 不限） */
   limitPoints: number | null;
+  /** 奖励类型：item（实物/权益） | allowance（零花钱） */
+  rewardType: RewardType;
+  /** 零花钱金额（分，rewardType=allowance 时有效） */
+  allowanceAmount: number | null;
   createdAt: string;
 }
 
@@ -287,6 +295,8 @@ export interface CreateRewardRequest {
   frequency?: RewardFrequency;
   limitCount?: number | null;
   limitPoints?: number | null;
+  rewardType?: RewardType;
+  allowanceAmount?: number | null;
 }
 export interface UpdateRewardRequest {
   name?: string;
@@ -298,6 +308,8 @@ export interface UpdateRewardRequest {
   frequency?: RewardFrequency;
   limitCount?: number | null;
   limitPoints?: number | null;
+  rewardType?: RewardType;
+  allowanceAmount?: number | null;
 }
 
 /** 某孩子在当前周期内对某奖励的兑换用量 */
@@ -315,6 +327,59 @@ export interface RewardUsage {
 }
 export interface RewardUsageResponse {
   items: RewardUsage[];
+}
+
+// ==================== 零花钱 ====================
+
+export type AllowanceTransactionType = 'income' | 'spend' | 'adjust';
+export type AllowanceRequestStatus = 'pending' | 'approved' | 'rejected';
+
+export interface AllowanceTransaction {
+  id: string;
+  childId: string;
+  /** 变动金额（分），正=收入 负=支出 */
+  changeAmount: number;
+  balanceAfter: number;
+  type: AllowanceTransactionType;
+  relatedType: string | null;
+  relatedId: string | null;
+  reason: string | null;
+  createdAt: string;
+}
+
+export interface AllowanceTransactionListResponse {
+  items: AllowanceTransaction[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface AllowanceRequest {
+  id: string;
+  childId: string;
+  /** 申请金额（分） */
+  amount: number;
+  purpose: string | null;
+  status: AllowanceRequestStatus;
+  reviewNote: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+}
+
+export interface AllowanceRequestListResponse {
+  items: AllowanceRequest[];
+}
+
+export interface CreateAllowanceRequest {
+  childId: string;
+  /** 申请金额（分） */
+  amount: number;
+  purpose?: string;
+}
+
+export interface ReviewAllowanceRequest {
+  approved: boolean;
+  reviewNote?: string;
 }
 
 // 兑换

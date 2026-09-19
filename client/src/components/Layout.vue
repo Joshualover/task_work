@@ -201,9 +201,9 @@
         >
           <component
             :is="item.icon"
-            :class="['h-6 w-6', $route.path === item.path ? 'text-[#36BFFA]' : '']"
+            :class="['h-5 w-5', $route.path === item.path ? 'text-[#36BFFA]' : '']"
           />
-          <span>{{ item.label }}</span>
+          <span class="text-[10px]">{{ item.label }}</span>
         </router-link>
       </div>
     </nav>
@@ -369,6 +369,7 @@ import {
   ShoppingBag,
   Timer,
   CalendarDays,
+  PiggyBank,
   ChevronDown,
   Menu,
   UserRound,
@@ -393,6 +394,7 @@ const PARENT_NAV_ITEMS = [
   { path: '/tasks', label: '作业任务池', icon: BookOpen },
   { path: '/points', label: '积分流水', icon: Coins },
   { path: '/rewards', label: '奖励管理', icon: Gift },
+  { path: '/allowance', label: '零花钱', icon: PiggyBank },
   { path: '/redemption', label: '兑换审核', icon: CheckCircle2 },
   { path: '/report', label: '报表统计', icon: BarChart3 },
   { path: '/history', label: '任务记录', icon: CalendarDays },
@@ -405,6 +407,7 @@ const CHILD_TAB_ITEMS = [
   { path: '/child-history', label: '记录', icon: CalendarDays },
   { path: '/child-points', label: '积分', icon: Wallet },
   { path: '/child-rewards', label: '兑换', icon: ShoppingBag },
+  { path: '/child-allowance', label: '零花钱', icon: PiggyBank },
 ];
 
 const route = useRoute();

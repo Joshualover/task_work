@@ -9,6 +9,7 @@ const CHILD_PAGES = [
   '/child-history',
   '/child-points',
   '/child-rewards',
+  '/child-allowance',
 ];
 
 export function isChildPage(path: string): boolean {
@@ -32,6 +33,9 @@ const CHILD_ALLOWED: Array<{ method: string; re: RegExp }> = [
   { method: 'GET', re: /^\/api\/redemptions$/ },
   { method: 'GET', re: /^\/api\/redemptions\/[^/]+$/ },
   { method: 'POST', re: /^\/api\/redemptions$/ },
+  // 零花钱：查看余额/流水/申请，发起申请
+  { method: 'GET', re: /^\/api\/allowance\/(balance|transactions|requests)$/ },
+  { method: 'POST', re: /^\/api\/allowance\/requests$/ },
   // 作业子任务：查看与勾选
   { method: 'GET', re: /^\/api\/ai\/suggestions$/ },
   { method: 'POST', re: /^\/api\/ai\/suggestions\/[^/]+\/subtasks\/[^/]+\/toggle$/ },

@@ -295,6 +295,10 @@ export const reward = pgTable("reward", {
   limitCount: integer("limit_count"),
   // 每个周期内可消耗的积分上限（null = 不限）
   limitPoints: integer("limit_points"),
+  // 奖励类型：item（实物/权益） | allowance（零花钱）
+  rewardType: varchar("reward_type", { length: 20 }).notNull().default('item'),
+  // 零花钱金额（单位：分，仅 rewardType=allowance 时有意义）
+  allowanceAmount: integer("allowance_amount"),
   // System field: Creation time (auto-filled, do not modify)
   createdAt: customTimestamptz("_created_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
   // System field: Creator (auto-filled, do not modify)
@@ -433,6 +437,8 @@ export const child = pgTable("child", {
   name: varchar("name", { length: 50 }).notNull(),
   avatarUrl: text("avatar_url"),
   points: integer("points").notNull().default(0),
+  // 零花钱余额（单位：分）
+  allowanceBalance: integer("allowance_balance").notNull().default(0),
   isActive: boolean("is_active").notNull().default(true),
   // System field: Creation time (auto-filled, do not modify)
   createdAt: customTimestamptz("_created_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
@@ -509,9 +515,76 @@ export const appUser = pgTable("app_user", {
   }).onDelete("set null"),
 ]);
 
+// 零花钱流水
+export const allowanceTransaction = pgTable("allowance_transaction", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  childId: uuid("child_id").notNull(),
+  // 变动金额（分），正数=收入，负数=支出
+  changeAmount: integer("change_amount").notNull(),
+  balanceAfter: integer("balance_after").notNull(),
+  // income | spend | adjust
+  type: varchar("type", { length: 20 }).notNull(),
+  // reward | request | manual
+  relatedType: varchar("related_type", { length: 20 }),
+  relatedId: uuid("related_id"),
+  reason: varchar("reason", { length: 500 }),
+  operator: userProfile("operator"),
+  // System field: Creation time (auto-filled, do not modify)
+  createdAt: customTimestamptz("_created_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  // System field: Creator (auto-filled, do not modify)
+  createdBy: userProfile("_created_by").default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+  // System field: Update time (auto-filled, do not modify)
+  updatedAt: customTimestamptz("_updated_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  // System field: Updater (auto-filled, do not modify)
+  updatedBy: userProfile("_updated_by").default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+}, (table) => [
+  index("idx_allowance_transaction_child_id").on(table.childId),
+  index("idx_allowance_transaction_created_at").on(table.createdAt),
+  foreignKey({
+    columns: [table.childId],
+    foreignColumns: [child.id],
+    name: "allowance_transaction_child_id_fkey",
+  }).onDelete("cascade"),
+]);
+
+// 零花钱使用申请
+export const allowanceRequest = pgTable("allowance_request", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  childId: uuid("child_id").notNull(),
+  // 申请金额（分）
+  amount: integer("amount").notNull(),
+  purpose: varchar("purpose", { length: 200 }),
+  // pending | approved | rejected
+  status: varchar("status", { length: 20 }).notNull().default('pending'),
+  reviewNote: varchar("review_note", { length: 500 }),
+  reviewedAt: customTimestamptz("reviewed_at", { precision: 3 }),
+  // System field: Creation time (auto-filled, do not modify)
+  createdAt: customTimestamptz("_created_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  // System field: Creator (auto-filled, do not modify)
+  createdBy: userProfile("_created_by").default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+  // System field: Update time (auto-filled, do not modify)
+  updatedAt: customTimestamptz("_updated_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  // System field: Updater (auto-filled, do not modify)
+  updatedBy: userProfile("_updated_by").default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+}, (table) => [
+  index("idx_allowance_request_child_id").on(table.childId),
+  index("idx_allowance_request_status").on(table.status),
+  foreignKey({
+    columns: [table.childId],
+    foreignColumns: [child.id],
+    name: "allowance_request_child_id_fkey",
+  }).onDelete("cascade"),
+]);
+
 // table aliases
 export const aiRecognitionLogTable = aiRecognitionLog;
 export const aiSettingTable = aiSetting;
+export const allowanceRequestTable = allowanceRequest;
+export const allowanceTransactionTable = allowanceTransaction;
 export const appUserTable = appUser;
 export const childTable = child;
 export const familyTable = family;
