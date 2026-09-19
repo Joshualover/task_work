@@ -22,10 +22,16 @@ const ReportPage = () => import('@/pages/report/ReportPage.vue');
 const AiSettingPage = () => import('@/pages/ai-setting/AiSettingPage.vue');
 const ChildDashboardPage = () =>
   import('@/pages/child-dashboard/ChildDashboardPage.vue');
+const PomodoroPage = () => import('@/pages/pomodoro/PomodoroPage.vue');
 const NotFound = () => import('@/pages/NotFound/NotFound.vue');
 
 /** 孩子账号可访问的页面 */
-const CHILD_ROUTES = ['/child-dashboard', '/child-points', '/child-rewards'];
+const CHILD_ROUTES = [
+  '/child-dashboard',
+  '/child-pomodoro',
+  '/child-points',
+  '/child-rewards',
+];
 
 const routes: RouteRecordRaw[] = [
   {
@@ -106,6 +112,12 @@ const routes: RouteRecordRaw[] = [
         path: 'child-dashboard',
         name: 'ChildDashboard',
         component: ChildDashboardPage,
+        meta: { mode: 'child' },
+      },
+      {
+        path: 'child-pomodoro',
+        name: 'ChildPomodoro',
+        component: PomodoroPage,
         meta: { mode: 'child' },
       },
       {

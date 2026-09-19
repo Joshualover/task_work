@@ -367,6 +367,7 @@ import {
   Home,
   Wallet,
   ShoppingBag,
+  Timer,
   ChevronDown,
   Menu,
   UserRound,
@@ -398,6 +399,7 @@ const PARENT_NAV_ITEMS = [
 
 const CHILD_TAB_ITEMS = [
   { path: '/child-dashboard', label: '今日任务', icon: Home },
+  { path: '/child-pomodoro', label: '番茄钟', icon: Timer },
   { path: '/child-points', label: '积分', icon: Wallet },
   { path: '/child-rewards', label: '兑换', icon: ShoppingBag },
 ];

@@ -3,7 +3,12 @@
  */
 
 /** 孩子端页面路由（直接访问这些路径时放行，交给前端路由/视图渲染） */
-const CHILD_PAGES = ['/child-dashboard', '/child-points', '/child-rewards'];
+const CHILD_PAGES = [
+  '/child-dashboard',
+  '/child-pomodoro',
+  '/child-points',
+  '/child-rewards',
+];
 
 export function isChildPage(path: string): boolean {
   return CHILD_PAGES.some((p) => path === p || path.startsWith(`${p}/`));
