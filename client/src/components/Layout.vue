@@ -368,6 +368,7 @@ import {
   Wallet,
   ShoppingBag,
   Timer,
+  CalendarDays,
   ChevronDown,
   Menu,
   UserRound,
@@ -394,12 +395,14 @@ const PARENT_NAV_ITEMS = [
   { path: '/rewards', label: '奖励管理', icon: Gift },
   { path: '/redemption', label: '兑换审核', icon: CheckCircle2 },
   { path: '/report', label: '报表统计', icon: BarChart3 },
+  { path: '/history', label: '任务记录', icon: CalendarDays },
   { path: '/ai-setting', label: 'AI 设置', icon: Sparkles },
 ];
 
 const CHILD_TAB_ITEMS = [
-  { path: '/child-dashboard', label: '今日任务', icon: Home },
-  { path: '/child-pomodoro', label: '番茄钟', icon: Timer },
+  { path: '/child-dashboard', label: '任务', icon: Home },
+  { path: '/child-pomodoro', label: '番茄', icon: Timer },
+  { path: '/child-history', label: '记录', icon: CalendarDays },
   { path: '/child-points', label: '积分', icon: Wallet },
   { path: '/child-rewards', label: '兑换', icon: ShoppingBag },
 ];

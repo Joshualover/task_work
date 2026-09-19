@@ -6,6 +6,7 @@
 const CHILD_PAGES = [
   '/child-dashboard',
   '/child-pomodoro',
+  '/child-history',
   '/child-points',
   '/child-rewards',
 ];

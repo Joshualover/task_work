@@ -142,6 +142,14 @@ class TaskListQueryDto implements TaskListQuery {
 
   @IsOptional()
   @IsString()
+  startDate?: string;
+
+  @IsOptional()
+  @IsString()
+  endDate?: string;
+
+  @IsOptional()
+  @IsString()
   @Type(() => String)
   @IsIn(['pending', 'submitted', 'completed', 'overdue', 'rejected'])
   status?: TaskStatus;

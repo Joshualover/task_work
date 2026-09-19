@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
-import { eq, and, asc, count, lt, inArray, sql } from 'drizzle-orm';
+import { eq, and, asc, count, lt, inArray, sql, gte, lte } from 'drizzle-orm';
 import type {
   TaskTemplate,
   TaskInstance,
@@ -271,6 +271,12 @@ export class TaskService {
     if (params.date) {
       conditions.push(eq(taskInstance.taskDate, params.date));
     }
+    if (params.startDate) {
+      conditions.push(gte(taskInstance.taskDate, params.startDate));
+    }
+    if (params.endDate) {
+      conditions.push(lte(taskInstance.taskDate, params.endDate));
+    }
     if (params.status) {
       conditions.push(eq(taskInstance.status, params.status));
     }
@@ -330,6 +336,12 @@ export class TaskService {
 
     if (params.date) {
       conditions.push(eq(taskInstance.taskDate, params.date));
+    }
+    if (params.startDate) {
+      conditions.push(gte(taskInstance.taskDate, params.startDate));
+    }
+    if (params.endDate) {
+      conditions.push(lte(taskInstance.taskDate, params.endDate));
     }
     if (params.status) {
       conditions.push(eq(taskInstance.status, params.status));

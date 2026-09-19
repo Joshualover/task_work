@@ -23,12 +23,14 @@ const AiSettingPage = () => import('@/pages/ai-setting/AiSettingPage.vue');
 const ChildDashboardPage = () =>
   import('@/pages/child-dashboard/ChildDashboardPage.vue');
 const PomodoroPage = () => import('@/pages/pomodoro/PomodoroPage.vue');
+const TaskHistoryPage = () => import('@/pages/history/TaskHistoryPage.vue');
 const NotFound = () => import('@/pages/NotFound/NotFound.vue');
 
 /** 孩子账号可访问的页面 */
 const CHILD_ROUTES = [
   '/child-dashboard',
   '/child-pomodoro',
+  '/child-history',
   '/child-points',
   '/child-rewards',
 ];
@@ -101,6 +103,13 @@ const routes: RouteRecordRaw[] = [
         meta: { mode: 'parent' },
       },
       {
+        path: 'history',
+        name: 'TaskHistory',
+        component: TaskHistoryPage,
+        props: { mode: 'parent' },
+        meta: { mode: 'parent' },
+      },
+      {
         path: 'ai-setting',
         name: 'AiSetting',
         component: AiSettingPage,
@@ -118,6 +127,13 @@ const routes: RouteRecordRaw[] = [
         path: 'child-pomodoro',
         name: 'ChildPomodoro',
         component: PomodoroPage,
+        meta: { mode: 'child' },
+      },
+      {
+        path: 'child-history',
+        name: 'ChildHistory',
+        component: TaskHistoryPage,
+        props: { mode: 'child' },
         meta: { mode: 'child' },
       },
       {

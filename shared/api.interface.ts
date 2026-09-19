@@ -214,6 +214,9 @@ export interface UpdateTaskTemplateRequest {
 export interface TaskListQuery {
   childId: string;
   date?: string;
+  /** 日期区间查询（用于日历/历史） */
+  startDate?: string;
+  endDate?: string;
   status?: TaskStatus;
   type?: TaskType;
 }
