@@ -9,6 +9,10 @@ export const SUBJECT_IMAGES: Record<string, string> = {
   语文: 'https://p7.itc.cn/q_70/images03/20210115/c02f3673fb68487280a56409fef9b89f.jpeg',
 };
 
+/** 普通任务（必要任务 / 未匹配科目的作业）的默认背景图 */
+export const DEFAULT_TASK_IMAGE =
+  'https://p1.itc.cn/images01/20230430/c2d455d31e504bb99debaacc1a2dca00.jpeg';
+
 /** 按科目（或任务名）匹配背景图 */
 export function subjectImage(
   subject?: string | null,
@@ -25,7 +29,8 @@ export function subjectImage(
 
 /**
  * 作业任务卡片的背景样式：科目背景图 + 半透明白色蒙层，保证原有文字/按钮可读。
- * 非作业任务或未匹配到科目时返回 undefined（保持原样）。
+ * - 语文/数学/英语作业 → 对应科目图
+ * - 其他作业 / 必要任务（普通任务）→ 默认背景图
  */
 export function taskCardStyle(
   task: Pick<TaskInstance, 'type'> & {
@@ -33,8 +38,9 @@ export function taskCardStyle(
     name?: string | null;
   },
 ): Record<string, string> | undefined {
-  if (task.type !== 'homework') return undefined;
-  const url = subjectImage(task.subject, task.name);
+  const subjectUrl =
+    task.type === 'homework' ? subjectImage(task.subject, task.name) : null;
+  const url = subjectUrl ?? DEFAULT_TASK_IMAGE;
   if (!url) return undefined;
   return {
     backgroundImage: `linear-gradient(rgba(255,255,255,0.86), rgba(255,255,255,0.86)), url("${url}")`,
