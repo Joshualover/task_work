@@ -12,7 +12,6 @@ import Switch from '@/components/ui/Switch.vue';
 import { rewardApi, pointApi, redemptionApi } from '@/api';
 import { useChildStore } from '@/stores/child';
 import type { Reward, RewardUsage } from '@shared/api.interface';
-import Image from '@/components/ui/Image.vue';
 import { toast } from '@/components/ui/toast';
 import { getErrorMessage } from '@/utils/error';
 import { fenToYuan, yuanToFen } from '@/utils/money';
@@ -499,85 +498,82 @@ const handleConfirmRedeemOpenChange = (open: boolean) => {
         v-for="reward in rewards"
         :key="reward.id"
         :class="[
-          'overflow-hidden rounded-2xl bg-white shadow-md transition-shadow hover:shadow-lg',
-          mode === 'parent' && !reward.isActive ? 'opacity-60' : '',
+          'group relative flex min-h-[200px] flex-col justify-end overflow-hidden rounded-2xl shadow-md transition-shadow hover:shadow-lg',
+          mode === 'parent' && !reward.isActive ? 'opacity-70' : '',
         ]"
       >
-        <!-- 图片区 -->
-        <div class="relative h-40 bg-gradient-to-br from-orange-100 to-orange-50">
-          <template v-if="reward.imageUrl">
-            <Image
-              :src="reward.imageUrl"
-              :alt="reward.name"
-              class="h-full w-full object-cover"
-            />
-          </template>
-          <div v-else class="flex h-full w-full items-center justify-center">
-            <Gift class="h-16 w-16 text-[#FF8A3D]/40" />
-          </div>
+        <!-- 背景图（铺满整块卡片） -->
+        <img
+          v-if="reward.imageUrl"
+          :src="reward.imageUrl"
+          :alt="reward.name"
+          class="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+        />
+        <div
+          v-else
+          class="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-orange-100 to-orange-50"
+        >
+          <Gift class="h-16 w-16 text-[#FF8A3D]/40" />
+        </div>
+        <!-- 渐变遮罩，保证文字可读 -->
+        <div
+          class="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/75 via-black/30 to-black/5"
+        />
 
-          <div v-if="mode === 'parent'" class="absolute right-2 top-2 flex gap-1">
-            <button
-              @click="openEditDialog(reward)"
-              class="flex h-8 w-8 items-center justify-center rounded-full bg-white/80 text-gray-600 hover:bg-white"
-            >
-              <Edit2 class="h-4 w-4" />
-            </button>
-            <button
-              @click="handleDeleteClick(reward.id)"
-              class="flex h-8 w-8 items-center justify-center rounded-full bg-white/80 text-red-500 hover:bg-white"
-            >
-              <Trash2 class="h-4 w-4" />
-            </button>
-          </div>
+        <!-- 家长：编辑 / 删除 -->
+        <div
+          v-if="mode === 'parent'"
+          class="absolute right-2 top-2 z-10 flex gap-1"
+        >
+          <button
+            @click="openEditDialog(reward)"
+            class="flex h-8 w-8 items-center justify-center rounded-full bg-black/35 text-white backdrop-blur-sm hover:bg-black/55"
+          >
+            <Edit2 class="h-4 w-4" />
+          </button>
+          <button
+            @click="handleDeleteClick(reward.id)"
+            class="flex h-8 w-8 items-center justify-center rounded-full bg-black/35 text-white backdrop-blur-sm hover:bg-red-500/80"
+          >
+            <Trash2 class="h-4 w-4" />
+          </button>
         </div>
 
         <!-- 信息区 -->
-        <div class="p-4">
-          <div class="flex items-start justify-between">
-            <h3 class="text-lg font-semibold text-[#1F2329]">
-              {{ reward.name }}
-            </h3>
-            <button
-              v-if="mode === 'parent'"
-              @click="void handleToggleActive(reward)"
-              class="text-gray-400 hover:text-[#FF8A3D]"
-            >
-              <ToggleRight v-if="reward.isActive" class="h-6 w-6 text-[#52C41A]" />
-              <ToggleLeft v-else class="h-6 w-6" />
-            </button>
-          </div>
+        <!-- 内容（叠加在背景图上） -->
+        <div class="relative z-10 p-4 text-white">
+          <h3 class="text-lg font-bold drop-shadow-md">{{ reward.name }}</h3>
           <p
             v-if="reward.description"
-            class="mt-1 text-sm text-gray-500 line-clamp-2"
+            class="mt-1 line-clamp-2 text-xs text-white/85"
           >
             {{ reward.description }}
           </p>
           <p
             v-if="limitSummary(reward)"
-            class="mt-1 text-xs font-medium text-[#A855F7]"
+            class="mt-1 text-xs font-medium text-yellow-200"
           >
             {{ limitSummary(reward) }}
           </p>
           <p
             v-if="reward.rewardType === 'allowance' && reward.allowanceAmount"
-            class="mt-1 text-xs font-semibold text-[#52C41A]"
+            class="mt-1 text-xs font-semibold text-yellow-200"
           >
             💰 兑换可得 ¥{{ fenToYuan(reward.allowanceAmount) }} 零花钱
           </p>
           <p
             v-if="mode === 'child' && usageSummary(reward)"
-            class="mt-0.5 text-xs text-gray-400"
+            class="mt-0.5 text-xs text-white/70"
           >
             {{ usageSummary(reward) }}
           </p>
-          <div class="mt-3 flex items-center justify-between">
+          <div class="mt-3 flex items-center justify-between gap-2">
             <div class="flex items-center gap-1">
-              <Coins class="h-4 w-4 text-[#FF8A3D]" />
-              <span class="font-bold text-[#FF8A3D]">
+              <Coins class="h-4 w-4 text-yellow-300" />
+              <span class="font-bold text-yellow-300">
                 {{ reward.pointsRequired }}
               </span>
-              <span class="text-xs text-gray-500">积分</span>
+              <span class="text-xs text-white/80">积分</span>
             </div>
 
             <!-- 孩子端：兑换按钮 -->
@@ -585,7 +581,7 @@ const handleConfirmRedeemOpenChange = (open: boolean) => {
               <Button
                 v-if="canRedeem(reward)"
                 size="sm"
-                class="rounded-full"
+                class="rounded-full shadow-md"
                 style="background-color: #FF8A3D"
                 :disabled="redeemLoading === reward.id"
                 @click="confirmRedeem = reward"
@@ -593,26 +589,28 @@ const handleConfirmRedeemOpenChange = (open: boolean) => {
                 {{ redeemLoading === reward.id ? '兑换中...' : '立即兑换' }}
               </Button>
               <div v-else class="text-right">
-                <p class="text-xs text-gray-400">
+                <p class="text-[11px] text-white/70">
                   {{ limitReached(reward) ? '本期无法兑换' : '还差' }}
                 </p>
-                <p class="text-sm font-medium text-gray-500">
+                <p class="text-sm font-medium text-white/90">
                   {{ limitReached(reward) ?? `${pointsShortage(reward)} 积分` }}
                 </p>
               </div>
             </template>
-            <!-- 家长端：状态标签 -->
-            <span
+            <!-- 家长端：上架 / 下架 -->
+            <button
               v-else
-              :class="[
-                'rounded-full px-2 py-0.5 text-xs font-medium',
-                reward.isActive
-                  ? 'bg-green-50 text-[#52C41A]'
-                  : 'bg-gray-100 text-gray-500',
-              ]"
+              type="button"
+              class="flex items-center gap-1 rounded-full bg-black/35 px-2.5 py-1 text-xs font-medium text-white backdrop-blur-sm transition-colors hover:bg-black/55"
+              @click="void handleToggleActive(reward)"
             >
+              <ToggleRight
+                v-if="reward.isActive"
+                class="h-4 w-4 text-[#52C41A]"
+              />
+              <ToggleLeft v-else class="h-4 w-4 text-white/70" />
               {{ reward.isActive ? '已上架' : '已下架' }}
-            </span>
+            </button>
           </div>
         </div>
       </div>
