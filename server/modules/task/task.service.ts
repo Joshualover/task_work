@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
-import { eq, and, asc, count, lt, inArray, sql, gte, lte } from 'drizzle-orm';
+import { eq, and, asc, count, lt, inArray, sql, gte, lte, or } from 'drizzle-orm';
 import type {
   TaskTemplate,
   TaskInstance,
@@ -270,7 +270,17 @@ export class TaskService {
     const conditions = [eq(taskInstance.childId, params.childId)];
 
     if (params.date) {
-      conditions.push(eq(taskInstance.taskDate, params.date));
+      // 当天任务；此外，目标型任务只要未完成（待完成/待确认/逾期）就跨天保留显示，
+      // 避免“不限时间”的目标因日期变化而从任务池/孩子端消失。
+      conditions.push(
+        or(
+          eq(taskInstance.taskDate, params.date),
+          and(
+            eq(taskInstance.type, 'goal'),
+            inArray(taskInstance.status, ['pending', 'submitted', 'overdue']),
+          ),
+        ),
+      );
     }
     if (params.startDate) {
       conditions.push(gte(taskInstance.taskDate, params.startDate));
@@ -336,7 +346,15 @@ export class TaskService {
     const conditions = [eq(taskInstance.childId, params.childId)];
 
     if (params.date) {
-      conditions.push(eq(taskInstance.taskDate, params.date));
+      conditions.push(
+        or(
+          eq(taskInstance.taskDate, params.date),
+          and(
+            eq(taskInstance.type, 'goal'),
+            inArray(taskInstance.status, ['pending', 'submitted', 'overdue']),
+          ),
+        ),
+      );
     }
     if (params.startDate) {
       conditions.push(gte(taskInstance.taskDate, params.startDate));
