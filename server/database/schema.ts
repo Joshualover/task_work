@@ -358,6 +358,10 @@ export const taskInstance = pgTable("task_instance", {
   name: varchar("name", { length: 200 }).notNull(),
   subject: varchar("subject", { length: 50 }),
   points: integer("points").notNull().default(10),
+  // 目标型任务：目标值 / 当前进度 / 单位
+  targetValue: integer("target_value"),
+  currentValue: integer("current_value").notNull().default(0),
+  unit: varchar("unit", { length: 20 }),
   difficultyMultiplier: numeric("difficulty_multiplier").notNull().default('1.0'),
   finalPoints: integer("final_points"),
   deadline: date("deadline"),

@@ -32,7 +32,7 @@ export interface TaskTemplate {
   createdAt: string;
 }
 
-export type TaskType = 'daily' | 'homework';
+export type TaskType = 'daily' | 'homework' | 'goal';
 export type TaskStatus = 'pending' | 'submitted' | 'completed' | 'overdue' | 'rejected';
 
 export interface TaskInstance {
@@ -45,6 +45,12 @@ export interface TaskInstance {
   subject: string | null;
   points: number;
   difficultyMultiplier: number;
+  /** 目标型任务：目标值 */
+  targetValue: number | null;
+  /** 目标型任务：当前进度 */
+  currentValue: number;
+  /** 目标型任务：单位（个/页/分钟…） */
+  unit: string | null;
   finalPoints: number | null;
   deadline: string | null;
   /** 截止日后的顺延天数（顺延期内不算逾期） */
@@ -262,6 +268,30 @@ export interface UpdateHomeworkTaskRequest {
   deadline?: string | null;
   extendDays?: number;
   taskDate?: string;
+  /** 目标型任务：目标值 / 单位 */
+  targetValue?: number | null;
+  unit?: string | null;
+}
+
+/** 新建目标型任务 */
+export interface CreateGoalTaskRequest {
+  childId: string;
+  name: string;
+  points: number;
+  /** 目标值（如 100） */
+  targetValue: number;
+  /** 单位（可选，如 个 / 页 / 分钟） */
+  unit?: string;
+  /** 截止日期（可选，不填则不限时间） */
+  deadline?: string;
+  extendDays?: number;
+  taskDate: string;
+}
+
+/** 目标型任务记录进度 */
+export interface GoalProgressRequest {
+  /** 增量，可为负（撤销） */
+  delta: number;
 }
 
 // 积分流水

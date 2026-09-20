@@ -22,6 +22,7 @@ import type {
   TaskListResponse,
   TaskListQuery,
   CreateHomeworkTaskRequest,
+  CreateGoalTaskRequest,
   UpdateHomeworkTaskRequest,
   SubmitTaskRequest,
   ReviewTaskRequest,
@@ -157,7 +158,7 @@ class TaskListQueryDto implements TaskListQuery {
   @IsOptional()
   @IsString()
   @Type(() => String)
-  @IsIn(['daily', 'homework'])
+  @IsIn(['daily', 'homework', 'goal'])
   type?: TaskType;
 }
 
@@ -223,6 +224,60 @@ class UpdateHomeworkTaskDto implements UpdateHomeworkTaskRequest {
   @IsOptional()
   @IsString()
   taskDate?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Type(() => Number)
+  targetValue?: number | null;
+
+  @IsOptional()
+  @IsString()
+  unit?: string | null;
+}
+
+class CreateGoalTaskDto implements CreateGoalTaskRequest {
+  @IsString()
+  @IsNotEmpty()
+  childId!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  name!: string;
+
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  points!: number;
+
+  @IsNumber()
+  @Min(1)
+  @Type(() => Number)
+  targetValue!: number;
+
+  @IsOptional()
+  @IsString()
+  unit?: string;
+
+  @IsOptional()
+  @IsString()
+  deadline?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  extendDays?: number;
+
+  @IsString()
+  @IsNotEmpty()
+  taskDate!: string;
+}
+
+class GoalProgressDto {
+  @IsNumber()
+  @Type(() => Number)
+  delta!: number;
 }
 
 class ReviewTaskDto implements ReviewTaskRequest {
@@ -349,6 +404,30 @@ export class TaskController {
   ): Promise<{ task: TaskInstance }> {
     await this.assertChild(req, dto.childId);
     const task = await this.taskService.createHomeworkTask(dto);
+    return { task };
+  }
+
+  @NeedLogin()
+  @Post('goal')
+  async createGoalTask(
+    @Req() req: Request,
+    @Body() dto: CreateGoalTaskDto,
+  ): Promise<{ task: TaskInstance }> {
+    await this.assertChild(req, dto.childId);
+    const task = await this.taskService.createGoalTask(dto);
+    return { task };
+  }
+
+  @NeedLogin()
+  @Post(':id/goal-progress')
+  async addGoalProgress(
+    @Req() req: Request,
+    @Param('id') id: string,
+    @Body() dto: GoalProgressDto,
+  ): Promise<{ task: TaskInstance }> {
+    const existing = await this.taskService.getTask(id);
+    await this.assertChild(req, existing.childId);
+    const task = await this.taskService.addGoalProgress(id, dto.delta);
     return { task };
   }
 

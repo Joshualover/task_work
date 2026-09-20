@@ -7,6 +7,7 @@ import type {
   TaskListResponse,
   TaskListQuery,
   CreateHomeworkTaskRequest,
+  CreateGoalTaskRequest,
   UpdateHomeworkTaskRequest,
   SubmitTaskRequest,
   ReviewTaskRequest,
@@ -92,6 +93,29 @@ export async function updateTask(
   const response = await apiClient.patch<{ task: TaskInstance }>(
     `/api/tasks/${id}`,
     data,
+  );
+  return response.data;
+}
+
+// ==================== 目标型任务 ====================
+
+export async function createGoalTask(
+  data: CreateGoalTaskRequest,
+): Promise<{ task: TaskInstance }> {
+  const response = await apiClient.post<{ task: TaskInstance }>(
+    '/api/tasks/goal',
+    data,
+  );
+  return response.data;
+}
+
+export async function addGoalProgress(
+  id: string,
+  delta: number,
+): Promise<{ task: TaskInstance }> {
+  const response = await apiClient.post<{ task: TaskInstance }>(
+    `/api/tasks/${id}/goal-progress`,
+    { delta },
   );
   return response.data;
 }

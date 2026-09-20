@@ -24,6 +24,8 @@ const CHILD_ALLOWED: Array<{ method: string; re: RegExp }> = [
   // 单条任务（排除 templates 等保留段）
   { method: 'GET', re: /^\/api\/tasks\/(?!templates$|generate-daily$|homework$)[^/]+$/ },
   { method: 'POST', re: /^\/api\/tasks\/[^/]+\/submit$/ },
+  // 目标型任务：记录进度
+  { method: 'POST', re: /^\/api\/tasks\/[^/]+\/goal-progress$/ },
   // 积分：仅查看
   { method: 'GET', re: /^\/api\/points\/(balance|transactions)$/ },
   { method: 'GET', re: /^\/api\/points\/transactions\/[^/]+$/ },

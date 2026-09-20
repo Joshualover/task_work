@@ -55,6 +55,7 @@ const SUBJECT_OPTIONS = [
 ];
 
 interface FormData {
+  taskKind: 'homework' | 'goal';
   name: string;
   subject: string;
   points: number;
@@ -64,6 +65,9 @@ interface FormData {
   extendHoliday: boolean;
   /** 顺延天数 */
   extendDays: number;
+  /** 目标型任务：目标值 / 单位 */
+  targetValue: number;
+  unit: string;
 }
 
 interface SubtaskFormItem {
@@ -78,6 +82,7 @@ const tasks = ref<TaskInstance[]>([]);
 const loading = ref<boolean>(false);
 const dialogOpen = ref<boolean>(false);
 const formData = reactive<FormData>({
+  taskKind: 'homework',
   name: '',
   subject: '',
   points: 10,
@@ -85,6 +90,8 @@ const formData = reactive<FormData>({
   taskDate: '',
   extendHoliday: false,
   extendDays: 2,
+  targetValue: 100,
+  unit: '个',
 });
 const formSubtasks = reactive<SubtaskFormItem[]>([]);
 const isEditMode = ref<boolean>(false);
@@ -159,6 +166,17 @@ const getCompletedSubtaskCount = (task: TaskInstance): number => {
 };
 
 const today = computed<string>(() => todayString());
+
+/** 目标型任务进度百分比 */
+const goalPercent = (task: TaskInstance): string => {
+  const target = task.targetValue ?? 0;
+  if (target <= 0) return '0%';
+  const pct = Math.min(
+    100,
+    Math.round(((task.currentValue ?? 0) / target) * 100),
+  );
+  return `${pct}%`;
+};
 
 /** 作业的实际可完成截止日 = 截止日 + 顺延天数 */
 const effectiveDeadline = (task: TaskInstance): string | null => {
@@ -290,6 +308,38 @@ const handleCreateHomework = async (): Promise<void> => {
   const validSubtasks = formSubtasks.filter((st: SubtaskFormItem) => st.content.trim() !== '');
 
   try {
+    // 目标型任务
+    if (formData.taskKind === 'goal') {
+      const target = Math.max(1, Math.floor(Number(formData.targetValue) || 0));
+      if (isEditMode.value && editingTaskId.value) {
+        await taskApi.updateTask(editingTaskId.value, {
+          name: formData.name.trim(),
+          points: formData.points,
+          deadline: formData.deadline || null,
+          extendDays,
+          taskDate: formData.taskDate || today.value,
+          targetValue: target,
+          unit: formData.unit.trim() || null,
+        });
+      } else {
+        await taskApi.createGoalTask({
+          childId: currentChildId.value,
+          name: formData.name.trim(),
+          points: formData.points,
+          targetValue: target,
+          unit: formData.unit.trim() || undefined,
+          deadline: formData.deadline || undefined,
+          extendDays,
+          taskDate: formData.taskDate || today.value,
+        });
+      }
+      toast.success(isEditMode.value ? '目标任务修改成功' : '目标任务添加成功');
+      dialogOpen.value = false;
+      resetForm();
+      void fetchTasks();
+      return;
+    }
+
     if (isEditMode.value && editingTaskId.value) {
       // ---- 编辑已有作业任务 ----
       const subtasksPayload = validSubtasks.map((st: SubtaskFormItem, idx: number) => ({
@@ -384,6 +434,7 @@ const handleCreateHomework = async (): Promise<void> => {
 };
 
 const resetForm = (): void => {
+  formData.taskKind = 'homework';
   formData.name = '';
   formData.subject = '';
   formData.points = 10;
@@ -391,6 +442,8 @@ const resetForm = (): void => {
   formData.taskDate = today.value;
   formData.extendHoliday = false;
   formData.extendDays = 2;
+  formData.targetValue = 100;
+  formData.unit = '个';
   formSubtasks.splice(0, formSubtasks.length);
   isEditMode.value = false;
   editingSuggestionId.value = '';
@@ -404,6 +457,9 @@ const openCreateDialog = (): void => {
 
 const openEditTask = (task: TaskInstance): void => {
   const subtasks = getTaskSubtasks(task);
+  formData.taskKind = task.type === 'goal' ? 'goal' : 'homework';
+  formData.targetValue = task.targetValue ?? 100;
+  formData.unit = task.unit ?? '个';
   formData.name = task.name;
   formData.subject = task.subject ?? '';
   formData.points = task.points;
@@ -820,6 +876,13 @@ const removeImage = (index: number): void => {
 
             <div class="mt-3 flex flex-wrap items-center gap-2">
               <Badge
+                v-if="task.type === 'goal'"
+                variant="outline"
+                class="rounded-full border-purple-200 text-purple-500"
+              >
+                目标任务
+              </Badge>
+              <Badge
                 v-if="task.subject"
                 variant="outline"
                 class="rounded-full border-blue-200 text-[#36BFFA]"
@@ -838,6 +901,19 @@ const removeImage = (index: number): void => {
               </span>
             </div>
 
+            <!-- 目标型任务进度 -->
+            <div v-if="task.type === 'goal'" class="mt-3">
+              <div class="mb-1 flex items-center justify-between text-xs text-gray-500">
+                <span>目标进度</span>
+                <span class="font-medium text-[#FF8A3D]">{{ goalProgressLabel(task) }}</span>
+              </div>
+              <div class="h-2 w-full overflow-hidden rounded-full bg-gray-100">
+                <div
+                  class="h-full rounded-full bg-[#FF8A3D] transition-all"
+                  :style="{ width: goalPercent(task) }"
+                />
+              </div>
+            </div>
             <!-- Subtasks toggle -->
             <button
               v-if="hasTaskSubtasks(task)"
@@ -950,6 +1026,13 @@ const removeImage = (index: number): void => {
 
             <div class="mt-3 flex flex-wrap items-center gap-2">
               <Badge
+                v-if="task.type === 'goal'"
+                variant="outline"
+                class="rounded-full border-purple-200 text-purple-500"
+              >
+                目标任务
+              </Badge>
+              <Badge
                 v-if="task.subject"
                 variant="outline"
                 class="rounded-full border-blue-200 text-[#36BFFA]"
@@ -968,6 +1051,19 @@ const removeImage = (index: number): void => {
               </span>
             </div>
 
+            <!-- 目标型任务进度 -->
+            <div v-if="task.type === 'goal'" class="mt-3">
+              <div class="mb-1 flex items-center justify-between text-xs text-gray-500">
+                <span>目标进度</span>
+                <span class="font-medium text-[#FF8A3D]">{{ goalProgressLabel(task) }}</span>
+              </div>
+              <div class="h-2 w-full overflow-hidden rounded-full bg-gray-100">
+                <div
+                  class="h-full rounded-full bg-[#FF8A3D] transition-all"
+                  :style="{ width: goalPercent(task) }"
+                />
+              </div>
+            </div>
             <!-- Subtasks toggle -->
             <button
               v-if="hasTaskSubtasks(task)"
@@ -1089,6 +1185,13 @@ const removeImage = (index: number): void => {
 
             <div class="mt-3 flex flex-wrap items-center gap-2">
               <Badge
+                v-if="task.type === 'goal'"
+                variant="outline"
+                class="rounded-full border-purple-200 text-purple-500"
+              >
+                目标任务
+              </Badge>
+              <Badge
                 v-if="task.subject"
                 variant="outline"
                 class="rounded-full border-blue-200 text-[#36BFFA]"
@@ -1107,6 +1210,19 @@ const removeImage = (index: number): void => {
               </span>
             </div>
 
+            <!-- 目标型任务进度 -->
+            <div v-if="task.type === 'goal'" class="mt-3">
+              <div class="mb-1 flex items-center justify-between text-xs text-gray-500">
+                <span>目标进度</span>
+                <span class="font-medium text-[#FF8A3D]">{{ goalProgressLabel(task) }}</span>
+              </div>
+              <div class="h-2 w-full overflow-hidden rounded-full bg-gray-100">
+                <div
+                  class="h-full rounded-full bg-[#FF8A3D] transition-all"
+                  :style="{ width: goalPercent(task) }"
+                />
+              </div>
+            </div>
             <!-- Subtasks toggle -->
             <button
               v-if="hasTaskSubtasks(task)"
@@ -1217,6 +1333,13 @@ const removeImage = (index: number): void => {
 
             <div class="mt-3 flex flex-wrap items-center gap-2">
               <Badge
+                v-if="task.type === 'goal'"
+                variant="outline"
+                class="rounded-full border-purple-200 text-purple-500"
+              >
+                目标任务
+              </Badge>
+              <Badge
                 v-if="task.subject"
                 variant="outline"
                 class="rounded-full border-blue-200 text-[#36BFFA]"
@@ -1235,6 +1358,19 @@ const removeImage = (index: number): void => {
               </span>
             </div>
 
+            <!-- 目标型任务进度 -->
+            <div v-if="task.type === 'goal'" class="mt-3">
+              <div class="mb-1 flex items-center justify-between text-xs text-gray-500">
+                <span>目标进度</span>
+                <span class="font-medium text-[#FF8A3D]">{{ goalProgressLabel(task) }}</span>
+              </div>
+              <div class="h-2 w-full overflow-hidden rounded-full bg-gray-100">
+                <div
+                  class="h-full rounded-full bg-[#FF8A3D] transition-all"
+                  :style="{ width: goalPercent(task) }"
+                />
+              </div>
+            </div>
             <!-- Subtasks toggle -->
             <button
               v-if="hasTaskSubtasks(task)"
@@ -1338,6 +1474,13 @@ const removeImage = (index: number): void => {
 
             <div class="mt-3 flex flex-wrap items-center gap-2">
               <Badge
+                v-if="task.type === 'goal'"
+                variant="outline"
+                class="rounded-full border-purple-200 text-purple-500"
+              >
+                目标任务
+              </Badge>
+              <Badge
                 v-if="task.subject"
                 variant="outline"
                 class="rounded-full border-blue-200 text-[#36BFFA]"
@@ -1356,6 +1499,19 @@ const removeImage = (index: number): void => {
               </span>
             </div>
 
+            <!-- 目标型任务进度 -->
+            <div v-if="task.type === 'goal'" class="mt-3">
+              <div class="mb-1 flex items-center justify-between text-xs text-gray-500">
+                <span>目标进度</span>
+                <span class="font-medium text-[#FF8A3D]">{{ goalProgressLabel(task) }}</span>
+              </div>
+              <div class="h-2 w-full overflow-hidden rounded-full bg-gray-100">
+                <div
+                  class="h-full rounded-full bg-[#FF8A3D] transition-all"
+                  :style="{ width: goalPercent(task) }"
+                />
+              </div>
+            </div>
             <!-- Subtasks toggle -->
             <button
               v-if="hasTaskSubtasks(task)"
@@ -1418,9 +1574,51 @@ const removeImage = (index: number): void => {
       </section>
     </div>
 
-    <!-- Create Homework Dialog -->
-    <Dialog v-model:modelValue="dialogOpen" :title="isEditMode ? '编辑作业任务' : '添加作业任务'">
+    <!-- Create Homework / Goal Dialog -->
+    <Dialog
+      v-model:modelValue="dialogOpen"
+      :title="
+        isEditMode
+          ? formData.taskKind === 'goal'
+            ? '编辑目标任务'
+            : '编辑作业任务'
+          : formData.taskKind === 'goal'
+            ? '添加目标任务'
+            : '添加作业任务'
+      "
+    >
       <div class="space-y-4 py-2">
+        <!-- 任务类型（编辑时不可切换） -->
+        <div v-if="!isEditMode" class="flex rounded-full bg-gray-100 p-1">
+          <button
+            type="button"
+            class="flex-1 rounded-full px-4 py-2 text-sm font-medium transition-colors"
+            :class="
+              formData.taskKind === 'homework'
+                ? 'bg-white text-[#FF8A3D] shadow-sm'
+                : 'text-gray-500'
+            "
+            @click="formData.taskKind = 'homework'"
+          >
+            作业任务
+          </button>
+          <button
+            type="button"
+            class="flex-1 rounded-full px-4 py-2 text-sm font-medium transition-colors"
+            :class="
+              formData.taskKind === 'goal'
+                ? 'bg-white text-[#FF8A3D] shadow-sm'
+                : 'text-gray-500'
+            "
+            @click="formData.taskKind = 'goal'"
+          >
+            目标任务
+          </button>
+        </div>
+        <p v-if="formData.taskKind === 'goal'" class="text-xs text-gray-400">
+          达到目标即视为完成（会自动提交待确认，家长审批通过后得分）；可设截止时间，也可不限时间。
+        </p>
+
         <div class="space-y-2">
           <Label for="task-name" class="text-sm font-medium text-[#1F2329]">
             任务名称
@@ -1433,7 +1631,7 @@ const removeImage = (index: number): void => {
           />
         </div>
 
-        <div class="space-y-2">
+        <div v-if="formData.taskKind === 'homework'" class="space-y-2">
           <Label for="subject" class="text-sm font-medium text-[#1F2329]">
             科目
           </Label>
@@ -1444,10 +1642,34 @@ const removeImage = (index: number): void => {
           />
         </div>
 
+        <!-- 目标型任务：目标值与单位 -->
+        <div v-if="formData.taskKind === 'goal'" class="grid grid-cols-2 gap-3">
+          <div class="space-y-2">
+            <Label class="text-sm font-medium text-[#1F2329]">目标值 *</Label>
+            <Input
+              type="number"
+              :value="String(formData.targetValue)"
+              @update:value="(v: string | number) => formData.targetValue = Number(v) || 0"
+              class="rounded-xl"
+            />
+          </div>
+          <div class="space-y-2">
+            <Label class="text-sm font-medium text-[#1F2329]">单位</Label>
+            <Input
+              v-model:value="formData.unit"
+              placeholder="个 / 页 / 分钟"
+              class="rounded-xl"
+            />
+          </div>
+        </div>
+
         <div class="space-y-2">
           <Label for="points" class="text-sm font-medium text-[#1F2329]">
             积分
-            <span class="text-xs text-gray-400 ml-1">（每科作业固定积分，与子任务无关）</span>
+            <span
+              v-if="formData.taskKind === 'homework'"
+              class="text-xs text-gray-400 ml-1"
+            >（每科作业固定积分，与子任务无关）</span>
           </Label>
           <Input
             id="points"
@@ -1524,7 +1746,7 @@ const removeImage = (index: number): void => {
         </div>
 
         <!-- Subtasks section -->
-        <div class="space-y-2">
+        <div v-if="formData.taskKind === 'homework'" class="space-y-2">
           <div class="flex items-center justify-between">
             <Label class="text-sm font-medium text-[#1F2329]">
               子任务（可选）

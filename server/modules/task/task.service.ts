@@ -8,6 +8,7 @@ import type {
   UpdateTaskTemplateRequest,
   TaskListQuery,
   CreateHomeworkTaskRequest,
+  CreateGoalTaskRequest,
   UpdateHomeworkTaskRequest,
   TaskStatus,
   HomeworkSubtask,
@@ -402,8 +403,8 @@ export class TaskService {
     data: UpdateHomeworkTaskRequest,
   ): Promise<TaskInstance> {
     const task = await this.getTask(taskId);
-    if (task.type !== 'homework') {
-      throw new BadRequestException('仅作业任务可编辑');
+    if (task.type !== 'homework' && task.type !== 'goal') {
+      throw new BadRequestException('仅作业/目标任务可编辑');
     }
 
     const patch: Partial<typeof taskInstance.$inferInsert> = {};
@@ -421,6 +422,14 @@ export class TaskService {
       patch.extendDays = Math.max(0, Math.floor(Number(data.extendDays) || 0));
     }
     if (data.taskDate !== undefined) patch.taskDate = data.taskDate;
+    if (data.targetValue !== undefined) {
+      const target = Math.floor(Number(data.targetValue));
+      if (!Number.isFinite(target) || target <= 0) {
+        throw new BadRequestException('目标值必须为正整数');
+      }
+      patch.targetValue = target;
+    }
+    if (data.unit !== undefined) patch.unit = data.unit?.trim() || null;
 
     if (Object.keys(patch).length === 0) return task;
 
@@ -431,6 +440,94 @@ export class TaskService {
       .returning();
 
     this.logger.log(`更新作业任务 ${taskId}`);
+    return this.mapTaskInstance(updated[0]);
+  }
+
+  /** 新建目标型任务（不限时间时可省略 deadline） */
+  async createGoalTask(data: CreateGoalTaskRequest): Promise<TaskInstance> {
+    if (!data.name || !data.name.trim()) {
+      throw new BadRequestException('任务名称不能为空');
+    }
+    const target = Math.floor(Number(data.targetValue));
+    if (!Number.isFinite(target) || target <= 0) {
+      throw new BadRequestException('目标值必须为正整数');
+    }
+
+    const [row] = await this.db
+      .insert(taskInstance)
+      .values({
+        childId: data.childId,
+        taskTemplateId: null,
+        type: 'goal',
+        name: data.name.trim(),
+        subject: null,
+        points: data.points,
+        difficultyMultiplier: '1.0',
+        finalPoints: null,
+        deadline: data.deadline ?? null,
+        extendDays: data.extendDays ?? 0,
+        targetValue: target,
+        currentValue: 0,
+        unit: data.unit?.trim() || null,
+        taskDate: data.taskDate,
+        status: 'pending',
+        submitTime: null,
+        rejectReason: null,
+        completionNote: null,
+      })
+      .returning();
+
+    this.logger.log(`创建目标任务: ${row.id}, ${data.name} 目标 ${target}`);
+    return this.mapTaskInstance(row);
+  }
+
+  /**
+   * 目标型任务记录进度；达到目标后自动提交为「待审核」（需家长审批才算完成）。
+   * delta 可为负（撤销）。
+   */
+  async addGoalProgress(taskId: string, delta: number): Promise<TaskInstance> {
+    const task = await this.getTask(taskId);
+    if (task.type !== 'goal') {
+      throw new BadRequestException('仅目标任务可记录进度');
+    }
+    if (task.status === 'submitted') {
+      throw new BadRequestException('任务已提交，等待家长确认');
+    }
+    if (task.status === 'completed') {
+      throw new BadRequestException('任务已完成');
+    }
+    if (task.status !== 'pending' && task.status !== 'overdue') {
+      throw new BadRequestException(`任务状态为 ${task.status}，无法记录进度`);
+    }
+
+    const target = task.targetValue ?? 0;
+    const step = Math.round(Number(delta) || 0);
+    const next = Math.max(0, Math.min(target, (task.currentValue ?? 0) + step));
+    const reached = target > 0 && next >= target;
+
+    const updated = await this.db
+      .update(taskInstance)
+      .set({
+        currentValue: next,
+        ...(reached
+          ? { status: 'submitted', submitTime: new Date() }
+          : {}),
+      })
+      .where(
+        and(
+          eq(taskInstance.id, taskId),
+          inArray(taskInstance.status, ['pending', 'overdue']),
+        ),
+      )
+      .returning();
+
+    if (updated.length === 0) {
+      throw new ConflictException('任务状态已变化，请刷新后重试');
+    }
+
+    this.logger.log(
+      `目标任务进度 ${taskId}: ${task.currentValue ?? 0} -> ${next}/${target}${reached ? '（已达成，待审核）' : ''}`,
+    );
     return this.mapTaskInstance(updated[0]);
   }
 
@@ -584,14 +681,14 @@ export class TaskService {
   }
 
   async markOverdueTasks(childId: string, date: string): Promise<number> {
-    // 作业任务：截止日 + 顺延天数 已过仍未提交（顺延期内不算逾期）
+    // 作业/目标任务：截止日 + 顺延天数 已过仍未提交（顺延期内不算逾期）
     const homeworkOverdue = await this.db
       .update(taskInstance)
       .set({ status: 'overdue' })
       .where(
         and(
           eq(taskInstance.childId, childId),
-          eq(taskInstance.type, 'homework'),
+          inArray(taskInstance.type, ['homework', 'goal']),
           eq(taskInstance.status, 'pending'),
           sql`(${taskInstance.deadline} + make_interval(days => ${taskInstance.extendDays})) < ${date}::date`,
         ),
@@ -643,6 +740,9 @@ export class TaskService {
       subject: row.subject ?? null,
       points: row.points,
       difficultyMultiplier: Number(row.difficultyMultiplier),
+      targetValue: row.targetValue ?? null,
+      currentValue: row.currentValue ?? 0,
+      unit: row.unit ?? null,
       finalPoints: row.finalPoints ?? null,
       deadline: row.deadline ? String(row.deadline) : null,
       extendDays: row.extendDays ?? 0,

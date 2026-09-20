@@ -170,6 +170,22 @@
                   </span>
                 </p>
 
+                <!-- 目标型任务进度 -->
+                <div v-if="task.type === 'goal'" class="mt-2">
+                  <div class="mb-1 flex items-center justify-between text-xs text-gray-500">
+                    <span>目标进度</span>
+                    <span class="font-semibold text-[#FF8A3D]">
+                      {{ goalProgressLabel(task) }}
+                    </span>
+                  </div>
+                  <div class="h-2.5 w-full overflow-hidden rounded-full bg-gray-100">
+                    <div
+                      class="h-full rounded-full bg-gradient-to-r from-[#FF8A3D] to-[#FFB347] transition-all duration-300"
+                      :style="{ width: goalPercent(task) }"
+                    />
+                  </div>
+                </div>
+
                 <!-- 子任务列表 -->
                 <div
                   v-if="hasSubtasks(task.id) && expandedTasks.has(task.id)"
@@ -216,8 +232,32 @@
                     +{{ task.points }}
                   </span>
                 </div>
+                <template
+                  v-if="
+                    task.type === 'goal' &&
+                    (task.status === 'pending' || task.status === 'overdue')
+                  "
+                >
+                  <button
+                    type="button"
+                    class="rounded-full bg-[#FF8A3D]/10 px-3 py-1.5 text-sm font-medium text-[#FF8A3D] transition-colors hover:bg-[#FF8A3D]/20 disabled:opacity-50"
+                    :disabled="goalSavingId === task.id"
+                    @click="handleGoalProgress(task, 1)"
+                  >
+                    +1
+                  </button>
+                  <button
+                    type="button"
+                    class="flex items-center gap-1 rounded-full bg-gradient-to-r from-[#FF8A3D] to-[#FFB347] px-4 py-1.5 text-sm font-medium text-white shadow-md transition-all active:scale-95 disabled:opacity-50"
+                    :disabled="goalSavingId === task.id"
+                    @click="openGoalDialog(task)"
+                  >
+                    <Plus class="h-4 w-4" />
+                    记录进度
+                  </button>
+                </template>
                 <button
-                  v-if="task.status === 'pending'"
+                  v-if="task.status === 'pending' && task.type !== 'goal'"
                   type="button"
                   @click="handleSubmitClick(task)"
                   :disabled="hasSubtasks(task.id) && !allSubtasksCompleted(task.id)"
@@ -256,6 +296,49 @@
           </p>
         </div>
       </div>
+
+      <!-- 目标型任务：记录进度 -->
+      <Dialog
+        v-model:model-value="goalDialogOpen"
+        title="记录进度"
+        max-width-class="sm:max-w-sm"
+      >
+        <div class="space-y-4">
+          <p class="text-sm text-gray-500">
+            「{{ goalTask?.name }}」当前
+            {{ goalTask ? goalProgressLabel(goalTask) : '' }}
+          </p>
+          <div class="space-y-2">
+            <Label class="text-sm font-medium text-[#1F2329]">
+              本次增加（可填负数撤销）
+            </Label>
+            <Input
+              type="number"
+              placeholder="如：10"
+              v-model:value="goalDelta"
+              class="rounded-xl"
+            />
+          </div>
+          <p class="text-xs text-gray-400">达到目标后会自动提交给家长确认</p>
+        </div>
+        <template #footer>
+          <Button
+            variant="outline"
+            class="rounded-full"
+            :disabled="goalSubmitting"
+            @click="goalDialogOpen = false"
+          >
+            取消
+          </Button>
+          <Button
+            class="rounded-full bg-[#FF8A3D] text-white hover:bg-[#FF7A2D]"
+            :disabled="goalSubmitting"
+            @click="void handleGoalDialogSubmit()"
+          >
+            {{ goalSubmitting ? '提交中...' : '确认' }}
+          </Button>
+        </template>
+      </Dialog>
 
       <!-- Submit confirm dialog -->
       <Dialog v-model:model-value="submitDialogOpen" title="确认完成">
@@ -307,6 +390,7 @@ import {
   CheckCircle2,
   Circle,
   ListChecks,
+  Plus,
 } from 'lucide-vue-next';
 
 import { taskApi, pointApi, aiApi } from '@/api';
@@ -316,6 +400,10 @@ import { taskCardStyle } from '@/utils/subject-image';
 import Dialog from '@/components/ui/Dialog.vue';
 import Button from '@/components/ui/Button.vue';
 import Textarea from '@/components/ui/Textarea.vue';
+import Input from '@/components/ui/Input.vue';
+import Label from '@/components/ui/Label.vue';
+import { toast } from '@/components/ui/toast';
+import { getErrorMessage } from '@/utils/error';
 import type { TaskInstance, TaskStatus, HomeworkSubtask, HomeworkSuggestion } from '@shared/api.interface';
 
 const STATUS_CONFIG: Record<TaskStatus, { label: string; color: string; bg: string }> = {
@@ -366,6 +454,72 @@ const submitDialogOpen = computed({
 });
 
 const todayStr = computed(() => todayString());
+
+/** 目标型任务：进度百分比 / 进度文案 */
+const goalPercent = (task: TaskInstance): string => {
+  const target = task.targetValue ?? 0;
+  if (target <= 0) return '0%';
+  const pct = Math.min(
+    100,
+    Math.round(((task.currentValue ?? 0) / target) * 100),
+  );
+  return `${pct}%`;
+};
+const goalProgressLabel = (task: TaskInstance): string => {
+  const unit = task.unit ? ` ${task.unit}` : '';
+  return `${task.currentValue ?? 0}/${task.targetValue ?? 0}${unit}`;
+};
+
+// 目标型任务：记录进度
+const goalDialogOpen = ref<boolean>(false);
+const goalTask = ref<TaskInstance | null>(null);
+const goalDelta = ref<string>('');
+const goalSubmitting = ref<boolean>(false);
+const goalSavingId = ref<string | null>(null);
+
+async function handleGoalProgress(
+  task: TaskInstance,
+  delta: number,
+): Promise<void> {
+  if (goalSavingId.value) return;
+  goalSavingId.value = task.id;
+  try {
+    await taskApi.addGoalProgress(task.id, delta);
+    await loadTasks(true);
+  } catch (error) {
+    logger.error('记录目标进度失败', error);
+    toast.error(getErrorMessage(error, '记录失败，请重试'));
+  } finally {
+    goalSavingId.value = null;
+  }
+}
+
+function openGoalDialog(task: TaskInstance): void {
+  goalTask.value = task;
+  goalDelta.value = '';
+  goalDialogOpen.value = true;
+}
+
+async function handleGoalDialogSubmit(): Promise<void> {
+  if (!goalTask.value) return;
+  const delta = Math.round(Number(goalDelta.value));
+  if (!Number.isFinite(delta) || delta === 0) {
+    toast.error('请输入本次增加的数值');
+    return;
+  }
+  goalSubmitting.value = true;
+  try {
+    await taskApi.addGoalProgress(goalTask.value.id, delta);
+    toast.success('进度已记录');
+    goalDialogOpen.value = false;
+    await loadTasks(true);
+  } catch (error) {
+    logger.error('记录目标进度失败', error);
+    toast.error(getErrorMessage(error, '记录失败，请重试'));
+  } finally {
+    goalSubmitting.value = false;
+  }
+}
 
 /** 作业的实际可完成截止日 = 截止日 + 顺延天数 */
 const effectiveDeadline = (task: TaskInstance): string | null => {
