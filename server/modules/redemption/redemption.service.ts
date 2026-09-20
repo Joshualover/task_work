@@ -12,6 +12,7 @@ import { sql } from 'drizzle-orm';
 
 import { redemption, reward, child, pointTransaction, allowanceTransaction } from '@server/database/schema';
 import { periodRangeUtc } from '@server/common/utils/date';
+import { NotificationService } from '../notification/notification.service';
 import type { RedemptionStatus } from '@shared/api.interface';
 
 @Injectable()
@@ -20,6 +21,7 @@ export class RedemptionService {
 
   constructor(
     @Inject(DRIZZLE_DATABASE) private readonly db: PostgresJsDatabase,
+    private readonly notificationService: NotificationService,
   ) {}
 
   async listRedemptions(params: {
@@ -237,6 +239,20 @@ export class RedemptionService {
     this.logger.log(
       `提交兑换申请 childId=${childId} rewardId=${rewardId} points=${rw.pointsRequired}`,
     );
+
+    // 提醒家长待审批
+    await this.notificationService
+      .create({
+        childId,
+        type: 'redemption_created',
+        title: '孩子提交了兑换申请',
+        body: `兑换「${rw.name}」，消耗 ${rw.pointsRequired} 积分`,
+        relatedType: 'redemption',
+        relatedId: result.id,
+      })
+      .catch((err: unknown) =>
+        this.logger.warn(`写入提醒失败: ${String(err)}`),
+      );
 
     return {
       id: result.id,

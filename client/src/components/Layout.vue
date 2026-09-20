@@ -115,6 +115,82 @@
           {{ childStore.currentChild?.name ?? authStore.user?.displayName }}
         </span>
 
+        <!-- 提醒（家长） -->
+        <div v-if="!authStore.isChild()" class="relative">
+          <button
+            type="button"
+            class="relative flex h-9 w-9 items-center justify-center rounded-full text-gray-600 transition-colors hover:bg-orange-50"
+            aria-label="提醒"
+            @click="toggleNotifications"
+          >
+            <Bell class="h-5 w-5" />
+            <span
+              v-if="unreadCount > 0"
+              class="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#FF4D4F] px-1 text-[10px] font-bold leading-none text-white"
+            >
+              {{ unreadCount > 99 ? '99+' : unreadCount }}
+            </span>
+          </button>
+          <div
+            v-if="notifOpen"
+            class="absolute right-0 top-full z-50 mt-2 w-80 max-w-[85vw] overflow-hidden rounded-2xl bg-white shadow-xl ring-1 ring-orange-100"
+          >
+            <div
+              class="flex items-center justify-between border-b border-orange-100 px-4 py-3"
+            >
+              <span class="text-sm font-semibold text-[#1F2329]">提醒</span>
+              <button
+                v-if="notifications.some((n) => !n.isRead)"
+                type="button"
+                class="text-xs text-[#FF8A3D] hover:underline"
+                @click="void handleMarkAllRead()"
+              >
+                全部已读
+              </button>
+            </div>
+            <div class="max-h-80 overflow-y-auto">
+              <div
+                v-if="notifLoading"
+                class="py-8 text-center text-sm text-gray-400"
+              >
+                加载中...
+              </div>
+              <div
+                v-else-if="notifications.length === 0"
+                class="py-8 text-center text-sm text-gray-400"
+              >
+                暂无提醒
+              </div>
+              <button
+                v-for="n in notifications"
+                :key="n.id"
+                type="button"
+                class="flex w-full items-start gap-2 border-b border-gray-50 px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-orange-50/50"
+                @click="void handleNotificationClick(n)"
+              >
+                <span
+                  class="mt-1.5 h-2 w-2 shrink-0 rounded-full"
+                  :class="n.isRead ? 'bg-gray-200' : 'bg-[#FF4D4F]'"
+                />
+                <span class="min-w-0 flex-1">
+                  <span class="block text-sm font-medium text-[#1F2329]">
+                    {{ n.title }}
+                  </span>
+                  <span
+                    v-if="n.body"
+                    class="mt-0.5 block truncate text-xs text-gray-500"
+                  >
+                    {{ n.body }}
+                  </span>
+                  <span class="mt-0.5 block text-[11px] text-gray-400">
+                    {{ formatNotifTime(n.createdAt) }}
+                  </span>
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+
         <!-- 用户菜单 -->
         <div v-if="authStore.loginEnabled" class="relative">
           <button
@@ -304,6 +380,13 @@
       </aside>
     </template>
 
+    <!-- 点击空白处关闭下拉（提醒/孩子/用户） -->
+    <div
+      v-if="childDropdownOpen || userMenuOpen || notifOpen"
+      class="fixed inset-0 z-30"
+      @click="closeDropdowns"
+    />
+
     <!-- 修改密码 -->
     <Dialog
       v-model:modelValue="pwdDialogOpen"
@@ -352,7 +435,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, watch, onMounted } from 'vue';
+import { ref, reactive, watch, onMounted, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
   LayoutDashboard,
@@ -370,6 +453,7 @@ import {
   Timer,
   CalendarDays,
   PiggyBank,
+  Bell,
   ChevronDown,
   Menu,
   UserRound,
@@ -378,6 +462,9 @@ import {
 } from 'lucide-vue-next';
 import { useChildStore } from '@/stores/child';
 import { useAuthStore } from '@/stores/auth';
+import { notificationApi } from '@/api';
+import type { AppNotification } from '@shared/api.interface';
+import { logger } from '@lark-apaas/client-toolkit/logger';
 import Dialog from '@/components/ui/Dialog.vue';
 import Input from '@/components/ui/Input.vue';
 import Label from '@/components/ui/Label.vue';
@@ -420,6 +507,89 @@ const childDropdownOpen = ref<boolean>(false);
 const userMenuOpen = ref<boolean>(false);
 const drawerOpen = ref<boolean>(false);
 
+// 提醒（家长）
+const notifications = ref<AppNotification[]>([]);
+const unreadCount = ref<number>(0);
+const notifOpen = ref<boolean>(false);
+const notifLoading = ref<boolean>(false);
+let notifTimer: number | null = null;
+
+function closeDropdowns(): void {
+  childDropdownOpen.value = false;
+  userMenuOpen.value = false;
+  notifOpen.value = false;
+}
+
+async function fetchNotifications(): Promise<void> {
+  if (authStore.isChild()) return;
+  notifLoading.value = true;
+  try {
+    const result = await notificationApi.list();
+    notifications.value = result.items;
+    unreadCount.value = result.unreadCount;
+  } catch (error) {
+    logger.error('获取提醒失败', error);
+  } finally {
+    notifLoading.value = false;
+  }
+}
+
+/** 轮询未读数；有新增时刷新列表并提示 */
+async function refreshUnread(): Promise<void> {
+  if (authStore.isChild()) return;
+  try {
+    const before = unreadCount.value;
+    const result = await notificationApi.unreadCount();
+    unreadCount.value = result.unreadCount;
+    if (result.unreadCount > before) {
+      void fetchNotifications();
+      toast.info('有新的待处理提醒');
+    }
+  } catch {
+    /* 轮询失败忽略 */
+  }
+}
+
+function toggleNotifications(): void {
+  const next = !notifOpen.value;
+  closeDropdowns();
+  notifOpen.value = next;
+  if (next) void fetchNotifications();
+}
+
+async function handleNotificationClick(n: AppNotification): Promise<void> {
+  if (n.isRead) return;
+  try {
+    await notificationApi.markRead(n.id);
+  } catch (error) {
+    logger.error('标记提醒已读失败', error);
+  }
+  n.isRead = true;
+  unreadCount.value = Math.max(0, unreadCount.value - 1);
+}
+
+async function handleMarkAllRead(): Promise<void> {
+  try {
+    await notificationApi.markAllRead();
+    notifications.value = notifications.value.map((n) => ({
+      ...n,
+      isRead: true,
+    }));
+    unreadCount.value = 0;
+  } catch (error) {
+    logger.error('全部已读失败', error);
+  }
+}
+
+function formatNotifTime(iso: string): string {
+  return new Date(iso).toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 watch(
   () => route.path,
   (newPath: string) => {
@@ -440,6 +610,17 @@ onMounted(() => {
     }
   } else {
     void childStore.fetchChildren();
+    void refreshUnread();
+    notifTimer = window.setInterval(() => {
+      void refreshUnread();
+    }, 30000);
+  }
+});
+
+onUnmounted(() => {
+  if (notifTimer != null) {
+    window.clearInterval(notifTimer);
+    notifTimer = null;
   }
 });
 

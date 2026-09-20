@@ -12,6 +12,7 @@ import { RewardModule } from './modules/reward/reward.module';
 import { RedemptionModule } from './modules/redemption/redemption.module';
 import { AiModule } from './modules/ai/ai.module';
 import { AllowanceModule } from './modules/allowance/allowance.module';
+import { NotificationModule } from './modules/notification/notification.module';
 import { ReportModule } from './modules/report/report.module';
 import { AuthModule } from './modules/auth/auth.module';
 
@@ -35,6 +36,7 @@ loadEnv();
     RewardModule,
     RedemptionModule,
     AllowanceModule,
+    NotificationModule,
     AiModule,
     ReportModule,
     // ====== @route-section: business-modules END ======

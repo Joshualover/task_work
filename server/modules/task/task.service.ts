@@ -15,6 +15,7 @@ import type {
 } from '@shared/api.interface';
 import { taskTemplate, taskInstance, child, pointTransaction, homeworkSubtask } from '@server/database/schema';
 import { isUniqueViolation } from '@server/common/utils/pg-error';
+import { NotificationService } from '../notification/notification.service';
 
 @Injectable()
 export class TaskService {
@@ -22,6 +23,7 @@ export class TaskService {
 
   constructor(
     @Inject(DRIZZLE_DATABASE) private readonly db: PostgresJsDatabase,
+    private readonly notificationService: NotificationService,
   ) {}
 
   // ==================== 任务模板部分 ====================
@@ -546,6 +548,22 @@ export class TaskService {
     this.logger.log(
       `目标任务进度 ${taskId}: ${task.currentValue ?? 0} -> ${next}/${target}${reached ? '（已达成，待审核）' : ''}`,
     );
+
+    // 达成目标 -> 提醒家长待确认
+    if (reached) {
+      await this.notificationService
+        .create({
+          childId: task.childId,
+          type: 'task_submitted',
+          title: '孩子达成了目标，待确认',
+          body: `${task.name}（${task.points} 积分）`,
+          relatedType: 'task',
+          relatedId: taskId,
+        })
+        .catch((err: unknown) =>
+          this.logger.warn(`写入提醒失败: ${String(err)}`),
+        );
+    }
     return this.mapTaskInstance(updated[0]);
   }
 
@@ -572,6 +590,19 @@ export class TaskService {
     }
 
     this.logger.log(`任务 ${taskId} 提交完成，状态变为 submitted`);
+    // 提醒家长待确认（失败不影响提交结果）
+    await this.notificationService
+      .create({
+        childId: updated[0].childId,
+        type: 'task_submitted',
+        title: '孩子提交了任务，待确认',
+        body: `${updated[0].name}（${updated[0].points} 积分）`,
+        relatedType: 'task',
+        relatedId: taskId,
+      })
+      .catch((err: unknown) =>
+        this.logger.warn(`写入提醒失败: ${String(err)}`),
+      );
     return this.mapTaskInstance(updated[0]);
   }
 

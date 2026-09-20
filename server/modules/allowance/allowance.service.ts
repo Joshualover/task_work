@@ -10,6 +10,7 @@ import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack
 import { and, desc, eq, gte, inArray, count, sql } from 'drizzle-orm';
 
 import { allowanceRequest, allowanceTransaction, child } from '@server/database/schema';
+import { NotificationService } from '../notification/notification.service';
 
 export interface AllowanceTransactionRow {
   id: string;
@@ -40,6 +41,7 @@ export class AllowanceService {
 
   constructor(
     @Inject(DRIZZLE_DATABASE) private readonly db: PostgresJsDatabase,
+    private readonly notificationService: NotificationService,
   ) {}
 
   /** 零花钱余额（分） */
@@ -166,6 +168,19 @@ export class AllowanceService {
       .returning();
 
     this.logger.log(`零花钱申请 childId=${childId} amount=${amount}`);
+    // 提醒家长待审批
+    await this.notificationService
+      .create({
+        childId,
+        type: 'allowance_requested',
+        title: '孩子申请使用零花钱',
+        body: `${(amount / 100).toFixed(2)} 元${purpose ? `：${purpose}` : ''}`,
+        relatedType: 'allowance_request',
+        relatedId: row.id,
+      })
+      .catch((err: unknown) =>
+        this.logger.warn(`写入提醒失败: ${String(err)}`),
+      );
     return {
       id: row.id,
       childId: row.childId,

@@ -584,12 +584,50 @@ export const allowanceRequest = pgTable("allowance_request", {
   }).onDelete("cascade"),
 ]);
 
+// 家长提醒（孩子完成任务/申请等需要家长处理的事件）
+export const notification = pgTable("notification", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  familyId: uuid("family_id").notNull(),
+  childId: uuid("child_id"),
+  // task_submitted | redemption_created | allowance_requested
+  type: varchar("type", { length: 30 }).notNull(),
+  title: varchar("title", { length: 100 }).notNull(),
+  body: varchar("body", { length: 300 }),
+  relatedType: varchar("related_type", { length: 20 }),
+  relatedId: uuid("related_id"),
+  isRead: boolean("is_read").notNull().default(false),
+  // System field: Creation time (auto-filled, do not modify)
+  createdAt: customTimestamptz("_created_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  // System field: Creator (auto-filled, do not modify)
+  createdBy: userProfile("_created_by").default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+  // System field: Update time (auto-filled, do not modify)
+  updatedAt: customTimestamptz("_updated_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  // System field: Updater (auto-filled, do not modify)
+  updatedBy: userProfile("_updated_by").default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+}, (table) => [
+  index("idx_notification_family_id").on(table.familyId),
+  index("idx_notification_is_read").on(table.isRead),
+  foreignKey({
+    columns: [table.familyId],
+    foreignColumns: [family.id],
+    name: "notification_family_id_fkey",
+  }).onDelete("cascade"),
+  foreignKey({
+    columns: [table.childId],
+    foreignColumns: [child.id],
+    name: "notification_child_id_fkey",
+  }).onDelete("set null"),
+]);
+
 // table aliases
 export const aiRecognitionLogTable = aiRecognitionLog;
 export const aiSettingTable = aiSetting;
 export const allowanceRequestTable = allowanceRequest;
 export const allowanceTransactionTable = allowanceTransaction;
 export const appUserTable = appUser;
+export const notificationTable = notification;
 export const childTable = child;
 export const familyTable = family;
 export const homeworkSubtaskTable = homeworkSubtask;

@@ -412,6 +412,27 @@ export interface ReviewAllowanceRequest {
   reviewNote?: string;
 }
 
+// ==================== 家长提醒 ====================
+
+export interface AppNotification {
+  id: string;
+  familyId: string;
+  childId: string | null;
+  /** task_submitted | redemption_created | allowance_requested */
+  type: string;
+  title: string;
+  body: string | null;
+  relatedType: string | null;
+  relatedId: string | null;
+  isRead: boolean;
+  createdAt: string;
+}
+
+export interface NotificationListResponse {
+  items: AppNotification[];
+  unreadCount: number;
+}
+
 export interface AdjustAllowanceRequest {
   childId: string;
   /** 变动金额（分），正=增加 负=减少 */

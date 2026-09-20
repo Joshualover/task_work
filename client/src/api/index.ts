@@ -6,5 +6,6 @@ export * as pointApi from './point';
 export * as rewardApi from './reward';
 export * as redemptionApi from './redemption';
 export * as allowanceApi from './allowance';
+export * as notificationApi from './notification';
 export * as aiApi from './ai';
 export * as reportApi from './report';

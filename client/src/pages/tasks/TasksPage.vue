@@ -120,7 +120,7 @@ const imagePreviews = ref<string[]>([]);
 const expandedTaskIds = ref<Set<string>>(new Set());
 
 // 任务分类筛选（单项 / 多项）与子任务打卡中状态
-const taskCategory = ref<'all' | 'single' | 'multi'>('all');
+const taskCategory = ref<'all' | 'single' | 'multi' | 'goal'>('all');
 const togglingSubtaskIds = ref<Set<string>>(new Set());
 
 const toggleTaskExpand = (taskId: string): void => {
@@ -235,11 +235,19 @@ watch([currentChildId, today], () => {
 });
 
 const visibleTasks = computed<TaskInstance[]>(() => {
+  const isGoal = (t: TaskInstance): boolean => t.type === 'goal';
   if (taskCategory.value === 'single') {
-    return tasks.value.filter((t: TaskInstance) => !hasTaskSubtasks(t));
+    return tasks.value.filter(
+      (t: TaskInstance) => !isGoal(t) && !hasTaskSubtasks(t),
+    );
   }
   if (taskCategory.value === 'multi') {
-    return tasks.value.filter((t: TaskInstance) => hasTaskSubtasks(t));
+    return tasks.value.filter(
+      (t: TaskInstance) => !isGoal(t) && hasTaskSubtasks(t),
+    );
+  }
+  if (taskCategory.value === 'goal') {
+    return tasks.value.filter((t: TaskInstance) => isGoal(t));
   }
   return tasks.value;
 });
@@ -249,12 +257,21 @@ const taskCategoryOptions = computed(() => [
   {
     value: 'single' as const,
     label: '单项任务',
-    count: tasks.value.filter((t: TaskInstance) => !hasTaskSubtasks(t)).length,
+    count: tasks.value.filter(
+      (t: TaskInstance) => t.type !== 'goal' && !hasTaskSubtasks(t),
+    ).length,
   },
   {
     value: 'multi' as const,
     label: '多项任务',
-    count: tasks.value.filter((t: TaskInstance) => hasTaskSubtasks(t)).length,
+    count: tasks.value.filter(
+      (t: TaskInstance) => t.type !== 'goal' && hasTaskSubtasks(t),
+    ).length,
+  },
+  {
+    value: 'goal' as const,
+    label: '目标任务',
+    count: tasks.value.filter((t: TaskInstance) => t.type === 'goal').length,
   },
 ]);
 
@@ -336,6 +353,7 @@ const handleCreateHomework = async (): Promise<void> => {
       toast.success(isEditMode.value ? '目标任务修改成功' : '目标任务添加成功');
       dialogOpen.value = false;
       resetForm();
+      taskCategory.value = 'all';
       void fetchTasks();
       return;
     }
@@ -426,6 +444,7 @@ const handleCreateHomework = async (): Promise<void> => {
     toast.success(isEditMode.value ? '作业任务修改成功' : '作业任务添加成功');
     dialogOpen.value = false;
     resetForm();
+    taskCategory.value = 'all';
     void fetchTasks();
   } catch (error) {
     logger.error(isEditMode.value ? '修改作业任务失败' : '创建作业任务失败', error);
