@@ -178,6 +178,12 @@ const goalPercent = (task: TaskInstance): string => {
   return `${pct}%`;
 };
 
+/** 目标型任务进度文案，如 3/100 个 */
+const goalProgressLabel = (task: TaskInstance): string => {
+  const unit = task.unit ? ` ${task.unit}` : '';
+  return `${task.currentValue ?? 0}/${task.targetValue ?? 0}${unit}`;
+};
+
 /** 作业的实际可完成截止日 = 截止日 + 顺延天数 */
 const effectiveDeadline = (task: TaskInstance): string | null => {
   if (!task.deadline) return null;
