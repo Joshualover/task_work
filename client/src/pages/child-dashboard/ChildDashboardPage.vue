@@ -397,10 +397,14 @@ const encouragementText = computed(() => {
   return '💪 新的一天开始啦，第一个任务等你挑战！';
 });
 
-async function loadTasks(): Promise<void> {
+/**
+ * 拉取今日任务/积分/子任务。
+ * silent=true 时不切换 loading（避免列表被占位替换导致滚动回顶），用于子任务勾选后的静默刷新。
+ */
+async function loadTasks(silent = false): Promise<void> {
   if (!currentChild.value) return;
   try {
-    loading.value = true;
+    if (!silent) loading.value = true;
     const [taskResult, balanceResult, suggestionResult] = await Promise.all([
       taskApi.listTasks({
         childId: currentChild.value.id,
@@ -439,7 +443,7 @@ async function loadTasks(): Promise<void> {
   } catch (err) {
     logger.error('Failed to load child tasks', err as Error);
   } finally {
-    loading.value = false;
+    if (!silent) loading.value = false;
   }
 }
 
@@ -506,8 +510,8 @@ async function handleToggleSubtask(taskId: string, subtask: HomeworkSubtask): Pr
       childId: currentChild.value.id,
       isCompleted: newCompleted,
     });
-    // 子任务全部完成后后端会自动完成任务，刷新列表以反映最新状态
-    await loadTasks();
+    // 子任务全部完成后后端会自动完成任务，静默刷新以反映最新状态（不重载页面/不回顶）
+    await loadTasks(true);
   } catch (err) {
     logger.error('Failed to toggle subtask', err as Error);
     // 回滚

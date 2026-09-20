@@ -191,9 +191,9 @@ function applyWeekendExtend(): void {
   formData.extendDays = 2;
 }
 
-const fetchTasks = async (): Promise<void> => {
+const fetchTasks = async (silent = false): Promise<void> => {
   if (!currentChildId.value) return;
-  loading.value = true;
+  if (!silent) loading.value = true;
   try {
     const result = await taskApi.listTasks({
       childId: currentChildId.value,
@@ -203,7 +203,7 @@ const fetchTasks = async (): Promise<void> => {
   } catch (error) {
     logger.error('获取任务列表失败', error);
   } finally {
-    loading.value = false;
+    if (!silent) loading.value = false;
   }
 };
 
@@ -266,7 +266,8 @@ const handleToggleSubtask = async (task: TaskInstance, subtask: HomeworkSubtask)
       childId: currentChildId.value,
       isCompleted: !subtask.isCompleted,
     });
-    await fetchTasks();
+    // 静默刷新：不切换 loading，避免列表被占位替换导致滚动回顶
+    await fetchTasks(true);
   } catch (error) {
     logger.error('更新子任务失败', error);
     toast.error('更新子任务失败，请重试');
