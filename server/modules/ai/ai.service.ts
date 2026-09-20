@@ -1195,7 +1195,7 @@ export class AiService {
 
     const suggestionId = subtaskWithSuggestion[0].subtask.suggestionId;
 
-    // 子任务全部完成时，自动完成对应的作业任务并发分
+    // 子任务全部完成时，自动提交为「待审核」，等待家长审批（不自动完成）
     const allSubtasks = await this.db
       .select({ isCompleted: homeworkSubtask.isCompleted })
       .from(homeworkSubtask)
@@ -1209,7 +1209,7 @@ export class AiService {
         .orderBy(desc(taskInstance.createdAt))
         .limit(1);
       if (linkedTask.length > 0) {
-        await this.taskService.autoCompleteTask(linkedTask[0].id);
+        await this.taskService.autoSubmitBySubtasks(linkedTask[0].id);
       }
     }
 

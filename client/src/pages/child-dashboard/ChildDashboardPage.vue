@@ -510,7 +510,7 @@ async function handleToggleSubtask(taskId: string, subtask: HomeworkSubtask): Pr
       childId: currentChild.value.id,
       isCompleted: newCompleted,
     });
-    // 子任务全部完成后后端会自动完成任务，静默刷新以反映最新状态（不重载页面/不回顶）
+    // 子任务全部完成后端会自动提交为「待审核」，静默刷新以反映最新状态（不重载页面/不回顶）
     await loadTasks(true);
   } catch (err) {
     logger.error('Failed to toggle subtask', err as Error);

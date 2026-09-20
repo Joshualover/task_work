@@ -254,7 +254,7 @@ const groupedTasks = computed<Record<TaskStatus, TaskInstance[]>>(() => {
   return groups;
 });
 
-// 勾选 / 取消子任务；全部完成后后端会自动完成任务
+// 勾选 / 取消子任务；全部完成后后端会自动提交为「待审核」，需家长审批
 const handleToggleSubtask = async (task: TaskInstance, subtask: HomeworkSubtask): Promise<void> => {
   if (!task.suggestionId || !currentChildId.value) return;
   if (togglingSubtaskIds.value.has(subtask.id)) return;

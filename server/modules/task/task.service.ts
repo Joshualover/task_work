@@ -565,33 +565,20 @@ export class TaskService {
   }
 
   /**
-   * 子任务全部完成后，自动完成对应的作业任务并发分。
-   * 复用 reviewTask 的状态校验与发分逻辑，幂等（已完成直接返回，并发冲突忽略）。
+   * 子任务全部完成后，自动把作业任务置为「待审核」，等待家长审批。
+   * 注意：所有作业任务都必须家长审批通过才算完成（不再自动完成/发分）。
    */
-  async autoCompleteTask(
-    taskId: string,
-    operatorUserId?: string,
-  ): Promise<TaskInstance | null> {
+  async autoSubmitBySubtasks(taskId: string): Promise<TaskInstance | null> {
     const task = await this.getTask(taskId);
-    if (task.status === 'completed') return task;
-    if (task.status !== 'pending' && task.status !== 'submitted') return null;
-
-    if (task.status === 'pending') {
-      // 先置为待审核，复用 reviewTask 的条件更新与发分逻辑
-      await this.db
-        .update(taskInstance)
-        .set({ status: 'submitted', submitTime: new Date() })
-        .where(
-          and(eq(taskInstance.id, taskId), eq(taskInstance.status, 'pending')),
-        );
-    }
-
+    if (task.status !== 'pending' && task.status !== 'overdue') return null;
     try {
-      return await this.reviewTask(taskId, true, undefined, undefined, operatorUserId);
+      return await this.submitTask(taskId, '子任务已全部完成，等待家长确认');
     } catch (error) {
-      // 并发下可能已被另一次调用完成
+      // 并发下可能已被其他请求提交/审核
       const latest = await this.getTask(taskId).catch(() => null);
-      if (latest?.status === 'completed') return latest;
+      if (latest && latest.status !== 'pending' && latest.status !== 'overdue') {
+        return latest;
+      }
       throw error;
     }
   }
