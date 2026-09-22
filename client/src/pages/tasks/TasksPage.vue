@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, watch } from 'vue';
+import { ref, reactive, computed, onMounted, watch, nextTick } from 'vue';
 import { logger } from '@lark-apaas/client-toolkit/logger';
 import {
   Plus, Clock, CheckCircle, XCircle, AlertCircle, BookOpen, Star,
@@ -19,6 +19,7 @@ import { taskApi, aiApi } from '@/api';
 import { useChildStore } from '@/stores/child';
 import { todayString } from '@/utils/date';
 import { taskCardStyle } from '@/utils/subject-image';
+import { snapshotScroll } from '@/utils/scroll';
 import { toast } from '@/components/ui/toast';
 import { getErrorMessage } from '@/utils/error';
 import type {
@@ -231,6 +232,16 @@ const fetchTasks = async (silent = false): Promise<void> => {
     if (!silent) loading.value = false;
   }
 };
+/**
+ * 刷新任务列表但保持滚动位置（审批 / 驳回 / 删除后不要跳回顶部）。
+ * 用静默刷新，避免中间出现「加载中」占位把内容高度压塌导致 scrollTop 被夹到 0。
+ */
+const refreshKeepScroll = async (): Promise<void> => {
+  const restoreScroll = snapshotScroll();
+  await fetchTasks(true);
+  await nextTick();
+  restoreScroll();
+};
 
 onMounted(() => {
   formData.taskDate = today.value;
@@ -308,8 +319,8 @@ const handleToggleSubtask = async (task: TaskInstance, subtask: HomeworkSubtask)
       childId: currentChildId.value,
       isCompleted: !subtask.isCompleted,
     });
-    // 静默刷新：不切换 loading，避免列表被占位替换导致滚动回顶
-    await fetchTasks(true);
+    // 静默刷新 + 保持滚动位置，避免列表被占位替换导致滚动回顶
+    await refreshKeepScroll();
   } catch (error) {
     logger.error('更新子任务失败', error);
     toast.error('更新子任务失败，请重试');
@@ -521,7 +532,7 @@ const handleDeleteTask = async (): Promise<void> => {
     await taskApi.deleteTask(deleteTaskId.value);
     toast.success('删除成功');
     closeDeleteConfirm();
-    void fetchTasks();
+    await refreshKeepScroll();
   } catch (error) {
     logger.error('删除任务失败', error);
     toast.error('删除失败，请重试');
@@ -538,14 +549,15 @@ const handleApprove = async (taskId: string): Promise<void> => {
     toast.success('已通过');
     reviewTaskId.value = null;
     rejectReason.value = '';
-    void fetchTasks();
+    await refreshKeepScroll();
   } catch (error) {
     logger.error('审核通过失败', error);
     toast.error('操作失败，请重试');
   }
 };
 
-const handleReject = async (taskId: string): Promise<void> => {  try {
+const handleReject = async (taskId: string): Promise<void> => {
+  try {
     await taskApi.reviewTask(taskId, {
       approved: false,
       rejectReason: rejectReason.value || undefined,
@@ -553,7 +565,7 @@ const handleReject = async (taskId: string): Promise<void> => {  try {
     toast.success('已驳回');
     reviewTaskId.value = null;
     rejectReason.value = '';
-    void fetchTasks();
+    await refreshKeepScroll();
   } catch (error) {
     logger.error('审核驳回失败', error);
     toast.error('操作失败，请重试');
@@ -575,7 +587,7 @@ const handleBatchApprove = async (): Promise<void> => {
     if (okCount > 0) toast.success(`已通过 ${okCount} 个任务并发放积分`);
     if (failCount > 0) toast.error(`${failCount} 个任务处理失败，请单独重试`);
     batchReviewDialogOpen.value = false;
-    await fetchTasks();
+    await refreshKeepScroll();
   } catch (error) {
     logger.error('批量审核失败', error);
     toast.error(getErrorMessage(error, '操作失败，请重试'));
@@ -588,7 +600,7 @@ const handleSubmitTask = async (taskId: string): Promise<void> => {
   try {
     await taskApi.submitTask(taskId, {});
     toast.success('已提交');
-    void fetchTasks();
+    void refreshKeepScroll();
   } catch (error) {
     logger.error('提交任务失败', error);
     toast.error('提交失败，请重试');

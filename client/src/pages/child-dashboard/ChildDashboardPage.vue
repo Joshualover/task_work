@@ -493,7 +493,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, watch, nextTick } from 'vue';
 import { logger } from '@lark-apaas/client-toolkit/logger';
 import {
   Star,
@@ -514,6 +514,8 @@ import { taskApi, pointApi, aiApi } from '@/api';
 import { useChildStore } from '@/stores/child';
 import { todayString } from '@/utils/date';
 import { taskCardStyle } from '@/utils/subject-image';
+import { burstConfetti } from '@/utils/confetti';
+import { snapshotScroll } from '@/utils/scroll';
 import Dialog from '@/components/ui/Dialog.vue';
 import Button from '@/components/ui/Button.vue';
 import Textarea from '@/components/ui/Textarea.vue';
@@ -664,6 +666,8 @@ async function handleBatchSubmit(): Promise<void> {
     const okCount = result.submitted?.length ?? 0;
     if (okCount > 0) {
       toast.success(`已提交 ${okCount} 个任务，等待家长确认`);
+      const hasNormal = (result.submitted ?? []).some((t) => !t.isLateSubmit);
+      if (hasNormal) burstConfetti({ count: 60 + okCount * 20 });
       encouragement.value =
         ENCOURAGEMENTS[Math.floor(Math.random() * ENCOURAGEMENTS.length)];
       showSuccess.value = true;
@@ -671,7 +675,10 @@ async function handleBatchSubmit(): Promise<void> {
         showSuccess.value = false;
       }, 2000);
     }
+    const restoreScroll = snapshotScroll();
     await loadTasks(true);
+    await nextTick();
+    restoreScroll();
     batchMode.value = false;
     selectedIds.value = new Set();
   } catch (error) {
@@ -711,8 +718,22 @@ async function handleGoalProgress(
   if (goalSavingId.value) return;
   goalSavingId.value = task.id;
   try {
-    await taskApi.addGoalProgress(task.id, delta);
+    const result = await taskApi.addGoalProgress(task.id, delta);
+    // 目标达成时任务会自动提交待确认，这里给一点庆祝反馈
+    if (result.task?.status === 'submitted') {
+      burstConfetti();
+      toast.success('目标达成！已提交给家长确认');
+      encouragement.value =
+        ENCOURAGEMENTS[Math.floor(Math.random() * ENCOURAGEMENTS.length)];
+      showSuccess.value = true;
+      setTimeout(() => {
+        showSuccess.value = false;
+      }, 2000);
+    }
+    const restoreScroll = snapshotScroll();
     await loadTasks(true);
+    await nextTick();
+    restoreScroll();
   } catch (error) {
     logger.error('记录目标进度失败', error);
     toast.error(getErrorMessage(error, '记录失败，请重试'));
@@ -918,13 +939,19 @@ async function handleConfirmSubmit(): Promise<void> {
     await taskApi.submitTask(selectedTask.value.id, { completionNote: submitNote.value });
     if (isLate) {
       toast.info('补提交申请已发送，等待家长确认');
+    } else {
+      // 正常完成：撒花庆祝
+      burstConfetti();
     }
     encouragement.value = ENCOURAGEMENTS[Math.floor(Math.random() * ENCOURAGEMENTS.length)];
     showSuccess.value = true;
     selectedTask.value = null;
     submitNote.value = '';
-    // Refresh task list
-    await loadTasks();
+    // 静默刷新 + 保持滚动位置（不显示占位、不跳回顶部）
+    const restoreScroll = snapshotScroll();
+    await loadTasks(true);
+    await nextTick();
+    restoreScroll();
     // Hide success toast after 2s
     setTimeout(() => {
       showSuccess.value = false;
