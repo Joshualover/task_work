@@ -85,8 +85,30 @@
       <div class="px-4 sm:px-6">
         <div class="mb-3 flex items-center justify-between">
           <h2 class="text-xl font-bold text-[#1F2329]">📋 今日任务</h2>
-          <span class="text-sm text-gray-500">共 {{ todayTasks.length }} 个</span>
+          <div class="flex items-center gap-2">
+            <span class="text-sm text-gray-500">共 {{ todayTasks.length }} 个</span>
+            <button
+              v-if="submittableTasks.length > 1"
+              type="button"
+              class="rounded-full border px-3 py-1 text-xs font-medium transition-colors"
+              :class="
+                batchMode
+                  ? 'border-[#FF8A3D] bg-orange-50 text-[#FF8A3D]'
+                  : 'border-gray-200 text-gray-500 hover:border-orange-200 hover:text-[#FF8A3D]'
+              "
+              @click="toggleBatchMode"
+            >
+              {{ batchMode ? '取消多选' : '多选提交' }}
+            </button>
+          </div>
         </div>
+
+        <p
+          v-if="batchMode"
+          class="mb-3 rounded-2xl bg-orange-50 p-3 text-xs text-[#FF8A3D]"
+        >
+          勾选多个已完成的任务，一起交给家长确认（子任务未全部完成的任务无法多选）。
+        </p>
 
         <!-- 逾期提醒：逾期任务可以申请补提交 -->
         <div
@@ -116,9 +138,35 @@
             :class="[
               'rounded-2xl p-4 shadow-md transition-all hover:shadow-lg',
               task.status === 'pending' ? 'bg-white' : 'bg-white/70',
+              batchMode && !canBatchSubmit(task) ? 'opacity-50' : '',
+              batchMode && selectedIds.has(task.id) ? 'ring-2 ring-[#52C41A]' : '',
             ]"
             :style="taskCardStyle(task)"
+            @click="handleCardClick(task, $event)"
           >
+            <!-- 多选提交：勾选栏 -->
+            <div
+              v-if="batchMode"
+              class="mb-2 flex items-center gap-2 border-b border-dashed border-gray-200 pb-2"
+            >
+              <CheckCircle2
+                v-if="selectedIds.has(task.id)"
+                class="h-5 w-5 text-[#52C41A]"
+              />
+              <Circle v-else class="h-5 w-5 text-gray-300" />
+              <span
+                class="text-xs"
+                :class="canBatchSubmit(task) ? 'text-gray-500' : 'text-gray-400'"
+              >
+                {{
+                  canBatchSubmit(task)
+                    ? selectedIds.has(task.id)
+                      ? '已选择，一起提交'
+                      : '点击选择'
+                    : '不可多选（请先完成子任务）'
+                }}
+              </span>
+            </div>
             <div class="flex items-start justify-between gap-3">
               <div class="flex-1">
                 <div class="flex items-center gap-2">
@@ -313,6 +361,39 @@
           <p class="text-sm text-[#FF8A3D]">
             {{ encouragementText }}
           </p>
+        </div>
+      </div>
+
+      <!-- 多选批量提交操作条 -->
+      <div
+        v-if="batchMode"
+        class="fixed inset-x-0 bottom-20 z-40 mx-auto max-w-lg px-4 sm:px-6"
+      >
+        <div
+          class="flex items-center justify-between gap-3 rounded-2xl bg-[#1F2329]/95 p-3 shadow-lg"
+        >
+          <div class="text-white">
+            <p class="text-sm font-semibold">已选 {{ selectedIds.size }} 个</p>
+            <p class="text-xs text-white/70">共 {{ selectedPoints }} 积分</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button
+              type="button"
+              class="rounded-full px-3 py-1.5 text-xs text-white/80 transition-colors hover:text-white"
+              @click="selectAllSubmittable"
+            >
+              全选
+            </button>
+            <button
+              type="button"
+              class="flex items-center gap-1 rounded-full bg-gradient-to-r from-[#52C41A] to-[#7BCF4A] px-4 py-1.5 text-sm font-medium text-white shadow-md transition-all active:scale-95 disabled:opacity-50"
+              :disabled="selectedIds.size === 0 || batchSubmitting"
+              @click="void handleBatchSubmit()"
+            >
+              <Check class="h-4 w-4" />
+              {{ batchSubmitting ? '提交中...' : '一键提交' }}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -523,6 +604,83 @@ const canToggleSubtask = (task: TaskInstance): boolean =>
 const lateSubmitMode = computed(
   () => selectedTask.value?.status === 'overdue',
 );
+
+// ==================== 多选批量提交 ====================
+const batchMode = ref<boolean>(false);
+const selectedIds = ref<Set<string>>(new Set());
+const batchSubmitting = ref<boolean>(false);
+
+/** 可批量提交：待完成/已逾期、非目标型、子任务已全部完成 */
+function canBatchSubmit(task: TaskInstance): boolean {
+  if (task.status !== 'pending' && task.status !== 'overdue') return false;
+  if (task.type === 'goal') return false;
+  return !hasSubtasks(task.id) || allSubtasksCompleted(task.id);
+}
+
+const submittableTasks = computed(() =>
+  sortedTasks.value.filter((t: TaskInstance) => canBatchSubmit(t)),
+);
+
+const selectedPoints = computed(() =>
+  sortedTasks.value
+    .filter((t: TaskInstance) => selectedIds.value.has(t.id))
+    .reduce((sum: number, t: TaskInstance) => sum + t.points, 0),
+);
+
+function toggleBatchMode(): void {
+  batchMode.value = !batchMode.value;
+  if (!batchMode.value) selectedIds.value = new Set();
+}
+
+function toggleSelect(task: TaskInstance): void {
+  if (!canBatchSubmit(task)) {
+    toast.info('这个任务还有子任务没完成，先完成子任务吧');
+    return;
+  }
+  const next = new Set(selectedIds.value);
+  if (next.has(task.id)) next.delete(task.id);
+  else next.add(task.id);
+  selectedIds.value = next;
+}
+
+function handleCardClick(task: TaskInstance, event?: MouseEvent): void {
+  if (!batchMode.value) return;
+  // 点卡片内的按钮（完成/子任务等）时不触发选中
+  const target = event?.target as HTMLElement | null;
+  if (target?.closest('button, a, input, textarea')) return;
+  toggleSelect(task);
+}
+
+function selectAllSubmittable(): void {
+  selectedIds.value = new Set(submittableTasks.value.map((t) => t.id));
+}
+
+async function handleBatchSubmit(): Promise<void> {
+  const taskIds = [...selectedIds.value];
+  if (taskIds.length === 0 || batchSubmitting.value) return;
+  try {
+    batchSubmitting.value = true;
+    const result = await taskApi.batchSubmitTasks({ taskIds });
+    const okCount = result.submitted?.length ?? 0;
+    if (okCount > 0) {
+      toast.success(`已提交 ${okCount} 个任务，等待家长确认`);
+      encouragement.value =
+        ENCOURAGEMENTS[Math.floor(Math.random() * ENCOURAGEMENTS.length)];
+      showSuccess.value = true;
+      setTimeout(() => {
+        showSuccess.value = false;
+      }, 2000);
+    }
+    await loadTasks(true);
+    batchMode.value = false;
+    selectedIds.value = new Set();
+  } catch (error) {
+    logger.error('批量提交失败', error);
+    toast.error(getErrorMessage(error, '提交失败，请重试'));
+  } finally {
+    batchSubmitting.value = false;
+  }
+}
 
 /** 目标型任务：进度百分比 / 进度文案 */
 const goalPercent = (task: TaskInstance): string => {

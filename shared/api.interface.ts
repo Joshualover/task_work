@@ -253,6 +253,23 @@ export interface CreateHomeworkTaskRequest {
 export interface SubmitTaskRequest {
   completionNote?: string;
 }
+
+/** 批量提交 / 批量审核 */
+export interface BatchSubmitTasksRequest {
+  taskIds: string[];
+  completionNote?: string;
+}
+
+export interface BatchReviewTasksRequest {
+  taskIds: string[];
+}
+
+export interface BatchTaskResultResponse {
+  /** 成功的结果（批量提交返回 submitted，批量审核返回 approved） */
+  submitted?: TaskInstance[];
+  approved?: TaskInstance[];
+  failed: Array<{ taskId: string; reason: string }>;
+}
 export interface ReviewTaskRequest {
   approved: boolean;
   rejectReason?: string;

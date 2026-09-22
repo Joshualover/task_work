@@ -634,7 +634,11 @@ export class TaskService {
     );
   }
 
-  async submitTask(taskId: string, completionNote?: string): Promise<TaskInstance> {
+  async submitTask(
+    taskId: string,
+    completionNote?: string,
+    options: { silent?: boolean } = {},
+  ): Promise<TaskInstance> {
     // 先读取当前状态，用于判断是否为逾期补提交
     const existing = await this.getTask(taskId);
     const isLateSubmit = existing.status === 'overdue';
@@ -672,6 +676,9 @@ export class TaskService {
     this.logger.log(
       `任务 ${taskId} ${isLateSubmit ? '逾期补提交' : '提交完成'}，状态变为 submitted`,
     );
+    // 批量提交时由调用方汇总成一条提醒（silent）
+    if (options.silent) return this.mapTaskInstance(updated[0]);
+
     // 提醒家长待确认（失败不影响提交结果）
     const noteText = completionNote ? `：${completionNote}` : '';
     await this.notificationService
@@ -689,6 +696,95 @@ export class TaskService {
         this.logger.warn(`写入提醒失败: ${String(err)}`),
       );
     return this.mapTaskInstance(updated[0]);
+  }
+
+  /**
+   * 批量提交（孩子端多选一起交）：逐个尝试，返回成功/失败明细。
+   * 成功的任务合并为一条家长提醒，避免一次弹出多条。
+   */
+  async batchSubmitTasks(
+    taskIds: string[],
+    completionNote?: string,
+  ): Promise<{
+    submitted: TaskInstance[];
+    failed: Array<{ taskId: string; reason: string }>;
+  }> {
+    const submitted: TaskInstance[] = [];
+    const failed: Array<{ taskId: string; reason: string }> = [];
+
+    for (const taskId of taskIds) {
+      try {
+        submitted.push(
+          await this.submitTask(taskId, completionNote, { silent: true }),
+        );
+      } catch (error) {
+        failed.push({
+          taskId,
+          reason:
+            error instanceof Error ? error.message : '提交失败，请重试',
+        });
+      }
+    }
+
+    if (submitted.length > 0) {
+      const names = submitted.map((t) => t.name);
+      const totalPoints = submitted.reduce((sum, t) => sum + t.points, 0);
+      const lateCount = submitted.filter((t) => t.isLateSubmit).length;
+      const title =
+        lateCount === submitted.length
+          ? `孩子申请补提交 ${submitted.length} 个任务，待确认`
+          : `孩子提交了 ${submitted.length} 个任务，待确认`;
+      const noteText = completionNote ? `：${completionNote}` : '';
+      await this.notificationService
+        .create({
+          childId: submitted[0].childId,
+          type: 'task_submitted',
+          title,
+          body: `${names.join('、')}（共 ${totalPoints} 积分）${
+            lateCount > 0 ? `，其中 ${lateCount} 个为逾期补提交` : ''
+          }${noteText}`,
+          relatedType: 'task',
+          relatedId: submitted[0].id,
+        })
+        .catch((err: unknown) =>
+          this.logger.warn(`写入提醒失败: ${String(err)}`),
+        );
+      this.logger.log(`批量提交完成：${submitted.length} 个成功，${failed.length} 个失败`);
+    }
+
+    return { submitted, failed };
+  }
+
+  /**
+   * 批量审核通过（家长端「全部通过」）：逐个走单条审核事务，返回明细。
+   */
+  async batchReviewTasks(
+    taskIds: string[],
+    operatorUserId?: string,
+  ): Promise<{
+    approved: TaskInstance[];
+    failed: Array<{ taskId: string; reason: string }>;
+  }> {
+    const approved: TaskInstance[] = [];
+    const failed: Array<{ taskId: string; reason: string }> = [];
+
+    for (const taskId of taskIds) {
+      try {
+        approved.push(
+          await this.reviewTask(taskId, true, undefined, undefined, operatorUserId),
+        );
+      } catch (error) {
+        failed.push({
+          taskId,
+          reason: error instanceof Error ? error.message : '审核失败',
+        });
+      }
+    }
+
+    if (approved.length > 0) {
+      this.logger.log(`批量审核通过 ${approved.length} 个任务，${failed.length} 个失败`);
+    }
+    return { approved, failed };
   }
 
   async reviewTask(

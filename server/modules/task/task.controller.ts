@@ -26,6 +26,9 @@ import type {
   UpdateHomeworkTaskRequest,
   SubmitTaskRequest,
   ReviewTaskRequest,
+  BatchSubmitTasksRequest,
+  BatchReviewTasksRequest,
+  BatchTaskResultResponse,
   TaskInstance,
   TaskStatus,
   TaskType,
@@ -38,6 +41,9 @@ import {
   IsOptional,
   IsNotEmpty,
   IsIn,
+  IsArray,
+  ArrayNotEmpty,
+  IsUUID,
   Min,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -195,6 +201,17 @@ class SubmitTaskDto implements SubmitTaskRequest {
   completionNote?: string;
 }
 
+class BatchTaskIdsDto {
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsUUID(undefined, { each: true })
+  taskIds!: string[];
+
+  @IsOptional()
+  @IsString()
+  completionNote?: string;
+}
+
 class UpdateHomeworkTaskDto implements UpdateHomeworkTaskRequest {
   @IsOptional()
   @IsString()
@@ -310,6 +327,18 @@ export class TaskController {
     const { userId } = req.userContext;
     const family = await this.familyService.getOrCreateFamily(userId);
     await this.familyService.assertChildInFamily(childId, family.id);
+  }
+
+  /** 批量接口：校验所有任务都属于本家庭的孩子（防越权） */
+  private async assertTasksOfOwnChild(
+    req: Request,
+    taskIds: string[],
+  ): Promise<void> {
+    const tasks = await Promise.all(taskIds.map((id) => this.taskService.getTask(id)));
+    const childIds = [...new Set(tasks.map((t) => t.childId))];
+    for (const childId of childIds) {
+      await this.assertChild(req, childId);
+    }
   }
 
   // ==================== 任务模板接口 ====================
@@ -445,6 +474,25 @@ export class TaskController {
   }
 
   @NeedLogin()
+  @Post('batch-submit')
+  async batchSubmitTasks(
+    @Req() req: Request,
+    @Body() dto: BatchTaskIdsDto,
+  ): Promise<BatchTaskResultResponse> {
+    await this.assertTasksOfOwnChild(req, dto.taskIds);
+    return this.taskService.batchSubmitTasks(dto.taskIds, dto.completionNote);
+  }
+
+  @Post('batch-review')
+  async batchReviewTasks(
+    @Req() req: Request,
+    @Body() dto: BatchTaskIdsDto,
+  ): Promise<BatchTaskResultResponse> {
+    const { userId } = req.userContext;
+    await this.assertTasksOfOwnChild(req, dto.taskIds);
+    return this.taskService.batchReviewTasks(dto.taskIds, userId);
+  }
+
   @Post(':id/submit')
   async submitTask(
     @Req() req: Request,

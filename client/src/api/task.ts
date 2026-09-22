@@ -11,6 +11,7 @@ import type {
   UpdateHomeworkTaskRequest,
   SubmitTaskRequest,
   ReviewTaskRequest,
+  BatchTaskResultResponse,
   TaskInstance,
 } from '@shared/api.interface';
 
@@ -138,6 +139,29 @@ export async function reviewTask(
   const response = await apiClient.post<{ task: TaskInstance }>(
     `/api/tasks/${id}/review`,
     data,
+  );
+  return response.data;
+}
+
+/** 孩子端：多选一起提交 */
+export async function batchSubmitTasks(body: {
+  taskIds: string[];
+  completionNote?: string;
+}): Promise<BatchTaskResultResponse> {
+  const response = await apiClient.post<BatchTaskResultResponse>(
+    '/api/tasks/batch-submit',
+    body,
+  );
+  return response.data;
+}
+
+/** 家长端：批量审核通过 */
+export async function batchReviewTasks(body: {
+  taskIds: string[];
+}): Promise<BatchTaskResultResponse> {
+  const response = await apiClient.post<BatchTaskResultResponse>(
+    '/api/tasks/batch-review',
+    body,
   );
   return response.data;
 }

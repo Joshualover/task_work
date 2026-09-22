@@ -20,6 +20,7 @@ import { useChildStore } from '@/stores/child';
 import { todayString } from '@/utils/date';
 import { taskCardStyle } from '@/utils/subject-image';
 import { toast } from '@/components/ui/toast';
+import { getErrorMessage } from '@/utils/error';
 import type {
   TaskInstance,
   TaskStatus,
@@ -544,8 +545,7 @@ const handleApprove = async (taskId: string): Promise<void> => {
   }
 };
 
-const handleReject = async (taskId: string): Promise<void> => {
-  try {
+const handleReject = async (taskId: string): Promise<void> => {  try {
     await taskApi.reviewTask(taskId, {
       approved: false,
       rejectReason: rejectReason.value || undefined,
@@ -557,6 +557,30 @@ const handleReject = async (taskId: string): Promise<void> => {
   } catch (error) {
     logger.error('审核驳回失败', error);
     toast.error('操作失败，请重试');
+  }
+};
+
+/** 待确认任务：一键全部通过 */
+const batchReviewing = ref<boolean>(false);
+const batchReviewDialogOpen = ref<boolean>(false);
+
+const handleBatchApprove = async (): Promise<void> => {
+  const taskIds = groupedTasks.value.submitted.map((t) => t.id);
+  if (taskIds.length === 0) return;
+  batchReviewing.value = true;
+  try {
+    const result = await taskApi.batchReviewTasks({ taskIds });
+    const okCount = result.approved?.length ?? 0;
+    const failCount = result.failed?.length ?? 0;
+    if (okCount > 0) toast.success(`已通过 ${okCount} 个任务并发放积分`);
+    if (failCount > 0) toast.error(`${failCount} 个任务处理失败，请单独重试`);
+    batchReviewDialogOpen.value = false;
+    await fetchTasks();
+  } catch (error) {
+    logger.error('批量审核失败', error);
+    toast.error(getErrorMessage(error, '操作失败，请重试'));
+  } finally {
+    batchReviewing.value = false;
   }
 };
 
@@ -1030,6 +1054,15 @@ const removeImage = (index: number): void => {
           <span class="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">
             {{ groupedTasks.submitted.length }}
           </span>
+          <button
+            v-if="groupedTasks.submitted.length > 1"
+            type="button"
+            class="ml-auto rounded-full bg-[#FF8A3D] px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-[#FF7A2D] disabled:opacity-50"
+            :disabled="batchReviewing"
+            @click="batchReviewDialogOpen = true"
+          >
+            {{ batchReviewing ? '处理中...' : `全部通过 (${groupedTasks.submitted.length})` }}
+          </button>
         </div>
         <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           <div
@@ -1937,8 +1970,7 @@ const removeImage = (index: number): void => {
       </template>
     </Dialog>
 
-    <!-- Delete Confirm Dialog -->
-    <Dialog
+    <!-- Delete Confirm Dialog -->    <Dialog
       :modelValue="deleteTaskId !== null"
       @update:modelValue="handleDeleteDialogOpenChange"
       title="删除任务"
@@ -1961,6 +1993,39 @@ const removeImage = (index: number): void => {
           class="rounded-full bg-[#FF4D4F] hover:bg-[#FF3333] text-white"
         >
           确认删除
+        </Button>
+      </template>
+    </Dialog>
+
+    <!-- 批量通过确认 -->
+    <Dialog
+      v-model:modelValue="batchReviewDialogOpen"
+      title="全部通过"
+      max-width-class="sm:max-w-sm"
+    >
+      <div class="py-2">
+        <p class="text-sm text-[#1F2329]">
+          把待确认的 {{ groupedTasks.submitted.length }} 个任务全部审核通过？通过后会立即给孩子发放对应积分。
+        </p>
+        <p class="mt-2 text-xs text-gray-500">
+          需要驳回某一个时，请取消后单独处理。
+        </p>
+      </div>
+      <template #footer>
+        <Button
+          variant="outline"
+          class="rounded-full"
+          :disabled="batchReviewing"
+          @click="batchReviewDialogOpen = false"
+        >
+          取消
+        </Button>
+        <Button
+          class="rounded-full bg-[#FF8A3D] text-white hover:bg-[#FF7A2D]"
+          :disabled="batchReviewing"
+          @click="void handleBatchApprove()"
+        >
+          {{ batchReviewing ? '处理中...' : '全部通过' }}
         </Button>
       </template>
     </Dialog>
