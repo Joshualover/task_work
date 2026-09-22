@@ -592,7 +592,19 @@ export interface RegisterRequest {
   password: string;
   displayName?: string;
   role: UserRole;
-  /** 孩子注册必填：家庭邀请码 */
+  /** 家庭邀请码：孩子注册必填；家长注册填了则加入已有家庭（如妈妈加入本家庭） */
   inviteCode?: string;
   familyName?: string;
+}
+
+/** 家庭家长账号（同一家庭可有多个家长） */
+export interface ParentAccount {
+  id: string;
+  username: string;
+  displayName: string;
+  createdAt: string;
+}
+
+export interface ParentAccountListResponse {
+  items: ParentAccount[];
 }

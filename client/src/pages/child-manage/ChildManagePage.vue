@@ -23,7 +23,7 @@
       <div>
         <p class="text-sm font-semibold text-[#1F2329]">家庭邀请码</p>
         <p class="mt-1 text-xs text-gray-500">
-          孩子在登录页「注册」时选择「我是孩子」，填入此邀请码即可加入本家庭
+          孩子或另一位家长在登录页「注册」时填入此邀请码，即可加入本家庭（家长权限与您相同）
         </p>
       </div>
       <div class="flex items-center gap-2">
@@ -40,6 +40,48 @@
         >
           复制
         </Button>
+      </div>
+    </div>
+
+    <!-- 家长账号：同一家庭可以有多个家长（爸爸/妈妈…） -->
+    <div
+      v-if="authStore.loginEnabled && !authStore.isChild()"
+      class="mb-6 rounded-2xl bg-white p-4 shadow-md"
+    >
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p class="text-sm font-semibold text-[#1F2329]">家长账号</p>
+          <p class="mt-1 text-xs text-gray-500">
+            给家里其他大人（如妈妈）建一个账号，登录后可管理本家庭所有孩子的任务、积分与奖励
+          </p>
+        </div>
+        <Button
+          size="sm"
+          class="rounded-full bg-[#FF8A3D] text-white hover:bg-[#FF7A2D]"
+          @click="openParentDialog()"
+        >
+          <Plus class="h-4 w-4" />
+          添加家长账号
+        </Button>
+      </div>
+      <div v-if="parentAccounts.length > 0" class="mt-3 flex flex-wrap gap-2">
+        <div
+          v-for="account in parentAccounts"
+          :key="account.id"
+          class="flex items-center gap-2 rounded-full bg-orange-50 px-3 py-1.5"
+        >
+          <span class="text-sm font-medium text-[#1F2329]">
+            {{ account.displayName }}
+          </span>
+          <span class="text-xs text-gray-500">{{ account.username }}</span>
+          <button
+            type="button"
+            class="text-xs text-[#FF8A3D] transition-colors hover:underline"
+            @click="openParentDialog(account)"
+          >
+            重置密码
+          </button>
+        </div>
       </div>
     </div>
 
@@ -248,6 +290,61 @@
         </Button>
       </template>
     </Dialog>
+
+    <!-- 家长账号 -->
+    <Dialog
+      v-model:modelValue="parentDialogOpen"
+      :title="parentForm.userId ? '重置家长密码' : '添加家长账号'"
+      max-width-class="sm:max-w-sm"
+    >
+      <div class="space-y-4">
+        <p class="text-sm text-gray-500">
+          家长账号登录后进入家长端，可以管理本家庭所有孩子的任务、积分与奖励。
+        </p>
+        <div class="space-y-2">
+          <Label class="text-sm font-medium text-[#1F2329]">用户名</Label>
+          <Input
+            v-model:value="parentForm.username"
+            placeholder="2-20 位，支持中文/字母/数字/下划线"
+            class="rounded-xl"
+          />
+        </div>
+        <div class="space-y-2">
+          <Label class="text-sm font-medium text-[#1F2329]">密码</Label>
+          <Input
+            v-model:value="parentForm.password"
+            type="password"
+            placeholder="至少 6 位"
+            class="rounded-xl"
+          />
+        </div>
+        <div class="space-y-2">
+          <Label class="text-sm font-medium text-[#1F2329]">称呼（可选）</Label>
+          <Input
+            v-model:value="parentForm.displayName"
+            placeholder="如：妈妈"
+            class="rounded-xl"
+          />
+        </div>
+      </div>
+      <template #footer>
+        <Button
+          variant="outline"
+          class="rounded-full"
+          :disabled="parentSubmitting"
+          @click="parentDialogOpen = false"
+        >
+          取消
+        </Button>
+        <Button
+          class="rounded-full bg-[#FF8A3D] text-white hover:bg-[#FF7A2D]"
+          :disabled="parentSubmitting"
+          @click="void handleSaveParent()"
+        >
+          {{ parentSubmitting ? '保存中...' : '保存' }}
+        </Button>
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -265,7 +362,7 @@ import Dialog from '@/components/ui/Dialog.vue';
 import Input from '@/components/ui/Input.vue';
 import Label from '@/components/ui/Label.vue';
 import Switch from '@/components/ui/Switch.vue';
-import type { Child, CreateChildRequest, UpdateChildRequest } from '@shared/api.interface';
+import type { Child, CreateChildRequest, UpdateChildRequest, ParentAccount } from '@shared/api.interface';
 
 interface ChildFormData {
   name: string;
@@ -277,6 +374,15 @@ const authStore = useAuthStore();
 
 // 孩子登录账号（childId -> username）
 const accounts = ref<Record<string, string>>({});
+const parentAccounts = ref<ParentAccount[]>([]);
+const parentDialogOpen = ref<boolean>(false);
+const parentSubmitting = ref<boolean>(false);
+const parentForm = reactive({
+  userId: '',
+  username: '',
+  password: '',
+  displayName: '',
+});
 const accountDialogOpen = ref<boolean>(false);
 const accountChild = ref<Child | null>(null);
 const accountSubmitting = ref<boolean>(false);
@@ -306,7 +412,56 @@ async function fetchChildren(): Promise<void> {
 onMounted(() => {
   void fetchChildren();
   void fetchAccounts();
+  void fetchParentAccounts();
 });
+
+/** 家长账号列表（同一家庭可有多个家长） */
+async function fetchParentAccounts(): Promise<void> {
+  if (!authStore.loginEnabled || authStore.isChild()) return;
+  try {
+    const result = await authApi.listParentAccounts();
+    parentAccounts.value = result.items;
+  } catch (error) {
+    logger.error('获取家长账号失败', error);
+  }
+}
+
+function openParentDialog(account?: ParentAccount): void {
+  parentForm.userId = account?.id ?? '';
+  parentForm.username = account?.username ?? '';
+  parentForm.displayName = account?.displayName ?? '';
+  parentForm.password = '';
+  parentDialogOpen.value = true;
+}
+
+async function handleSaveParent(): Promise<void> {
+  const username = parentForm.username.trim();
+  if (!username) {
+    toast.error('请填写用户名');
+    return;
+  }
+  if (parentForm.password.length < 6) {
+    toast.error('密码至少 6 位');
+    return;
+  }
+  parentSubmitting.value = true;
+  try {
+    await authApi.saveParentAccount({
+      userId: parentForm.userId || undefined,
+      username,
+      password: parentForm.password,
+      displayName: parentForm.displayName.trim() || undefined,
+    });
+    toast.success(parentForm.userId ? '密码已重置' : '家长账号已创建');
+    parentDialogOpen.value = false;
+    await fetchParentAccounts();
+  } catch (error) {
+    logger.error('保存家长账号失败', error);
+    toast.error(getErrorMessage(error, '保存失败，请重试'));
+  } finally {
+    parentSubmitting.value = false;
+  }
+}
 
 function accountFor(childId: string | undefined): string | undefined {
   return childId ? accounts.value[childId] : undefined;

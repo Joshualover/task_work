@@ -39,6 +39,14 @@ class ChildAccountDto {
   password?: string;
 }
 
+class ParentAccountDto {
+  /** 传入则为重置该家长账号，否则新建 */
+  userId?: string;
+  username?: string;
+  password?: string;
+  displayName?: string;
+}
+
 function sessionCookieOptions(): {
   httpOnly: boolean;
   sameSite: 'lax';
@@ -125,6 +133,30 @@ export class AuthController {
     const session = this.requireParent(req);
     const items = await this.authService.listChildAccounts(session.familyId);
     return { items };
+  }
+
+  /** 家长：本家庭家长账号列表 */
+  @Get('parent-accounts')
+  async parentAccounts(@Req() req: Request) {
+    const session = this.requireParent(req);
+    const items = await this.authService.listParentAccounts(session.familyId);
+    return { items };
+  }
+
+  /** 家长：新增家长账号 / 重置家长密码（同一家庭，权限相同） */
+  @Post('parent-account')
+  async saveParentAccount(
+    @Req() req: Request,
+    @Body() body: ParentAccountDto,
+  ): Promise<{ id: string; username: string }> {
+    const session = this.requireParent(req);
+    return this.authService.upsertParentAccount(
+      session.familyId,
+      body.username,
+      body.password,
+      body.displayName,
+      body.userId,
+    );
   }
 
   /** 家长：为孩子创建 / 重置登录账号 */

@@ -24,6 +24,43 @@ const IGNORE = new Set([
   'min', 'max', 'clamp', 'attr', 'counter', 'format',
 ]);
 
+/** 不需要闭合的标签 */
+const VOID_TAGS = new Set([
+  'br', 'hr', 'img', 'input', 'meta', 'link', 'source',
+  'area', 'base', 'col', 'embed', 'track', 'wbr',
+]);
+
+/**
+ * 模板标签配对检查：揪出「少了结束标签」这类只在构建时才报错的问题。
+ * （type-check / eslint 都不解析模板，vite build 才会报）
+ */
+function checkTagBalance(src) {
+  // 贪心匹配 = 取最外层 <template>
+  const root = src.match(/<template[^>]*>([\s\S]*)<\/template>/);
+  if (!root) return [];
+  const body = root[1]
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<script[\s\S]*?<\/script>/g, '')
+    .replace(/<style[\s\S]*?<\/style>/g, '');
+
+  const stack = [];
+  const tagRe = /<\/?([A-Za-z][\w.-]*)((?:"[^"]*"|'[^']*'|[^>"'])*?)(\/?)>/g;
+  let m;
+  while ((m = tagRe.exec(body)) !== null) {
+    const raw = m[0];
+    const name = m[1];
+    const selfClose = m[3] === '/' || raw.endsWith('/>');
+    if (VOID_TAGS.has(name.toLowerCase()) || selfClose) continue;
+    if (raw.startsWith('</')) {
+      const top = stack.pop();
+      if (top !== name) return [`标签不匹配：期望 </${top}>，实际 </${name}>`];
+    } else {
+      stack.push(name);
+    }
+  }
+  return stack.length > 0 ? [`未闭合标签：<${stack.join('>、<')}>`] : [];
+}
+
 /** 递归收集目录下的 .vue 文件 */
 function collectVueFiles(dir, acc = []) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -42,6 +79,7 @@ const args = process.argv.slice(2);
 const files = args.length > 0 ? args : collectVueFiles('client/src').sort();
 
 let failed = 0;
+let checked = 0;
 
 for (const file of files) {
   const src = fs.readFileSync(file, 'utf8');
@@ -51,8 +89,7 @@ for (const file of files) {
   if (!tplMatch || !scriptMatch) {
     console.log(`-  ${file}（无 template/script 块，跳过）`);
     continue;
-  }
-  const tpl = tplMatch[0];
+  }  const tpl = tplMatch[0];
   const script = scriptMatch[0];
 
   // 只取「非成员访问」的调用（排除 x.trim() 这类方法调用）
@@ -70,11 +107,21 @@ for (const file of files) {
   if (missing.length > 0) {
     failed += 1;
     console.log(`❌ ${file}\n   模板调用但脚本中不存在: ${missing.join(', ')}`);
+    continue;
   }
+
+  const tagErrors = checkTagBalance(src);
+  if (tagErrors.length > 0) {
+    failed += 1;
+    console.log(`❌ ${file}\n   ${tagErrors.join('；')}`);
+    continue;
+  }
+
+  checked += 1;
 }
 
 if (failed > 0) {
-  console.log(`\n共 ${failed} 个文件存在未定义的模板绑定`);
+  console.log(`\n共 ${failed} 个文件存在问题`);
   process.exit(1);
 }
-console.log(`\n✅ 已检查 ${files.length} 个 .vue 文件，模板绑定全部有定义`);
+console.log(`\n✅ 已检查 ${checked} 个 .vue 文件，模板绑定与标签配对均正常`);

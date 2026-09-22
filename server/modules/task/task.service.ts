@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
-import { eq, and, asc, count, lt, inArray, sql, gte, lte, or } from 'drizzle-orm';
+import { eq, and, asc, count, lt, ne, inArray, sql, gte, lte, or } from 'drizzle-orm';
 import type {
   TaskTemplate,
   TaskInstance,
@@ -15,7 +15,14 @@ import type {
 } from '@shared/api.interface';
 import { taskTemplate, taskInstance, child, pointTransaction, homeworkSubtask } from '@server/database/schema';
 import { isUniqueViolation } from '@server/common/utils/pg-error';
+import { todayString } from '@server/common/utils/date';
 import { NotificationService } from '../notification/notification.service';
+
+/**
+ * 补提交期限（天）：任务逾期后仍可在该天数内申请补提交。
+ * 超过期限后任务不再展示、也无法再提交。
+ */
+export const LATE_SUBMIT_WINDOW_DAYS = 1;
 
 @Injectable()
 export class TaskService {
@@ -285,6 +292,20 @@ export class TaskService {
         ),
       );
     }
+    if (params.date) {
+      // 超过补提交期限的逾期任务不再展示（任务记录里仍可按日期查看）
+      conditions.push(
+        or(
+          ne(taskInstance.status, 'overdue'),
+          sql`(
+            case when ${taskInstance.type} = 'daily'
+              then ${taskInstance.taskDate}
+              else coalesce(${taskInstance.deadline}, ${taskInstance.taskDate})
+            end
+          ) + (${taskInstance.extendDays} + ${LATE_SUBMIT_WINDOW_DAYS}) >= ${params.date}::date`,
+        ),
+      );
+    }
     if (params.startDate) {
       conditions.push(gte(taskInstance.taskDate, params.startDate));
     }
@@ -357,6 +378,20 @@ export class TaskService {
             lt(taskInstance.taskDate, params.date),
             inArray(taskInstance.status, ['pending', 'submitted', 'overdue']),
           ),
+        ),
+      );
+    }
+    if (params.date) {
+      // 超过补提交期限的逾期任务不再展示（任务记录里仍可按日期查看）
+      conditions.push(
+        or(
+          ne(taskInstance.status, 'overdue'),
+          sql`(
+            case when ${taskInstance.type} = 'daily'
+              then ${taskInstance.taskDate}
+              else coalesce(${taskInstance.deadline}, ${taskInstance.taskDate})
+            end
+          ) + (${taskInstance.extendDays} + ${LATE_SUBMIT_WINDOW_DAYS}) >= ${params.date}::date`,
         ),
       );
     }
@@ -573,10 +608,44 @@ export class TaskService {
    * 提交任务完成（含逾期补提交）。
    * 任务已逾期时标记 isLateSubmit=true，家长端会显示「补提交」标识，仍需家长审批。
    */
+  /** `YYYY-MM-DD` 加天数（UTC 计算，避免时区偏移） */
+  private addDays(dateStr: string, days: number): string {
+    const d = new Date(`${dateStr}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + days);
+    return d.toISOString().slice(0, 10);
+  }
+
+  /**
+   * 补提交截止日（含当天，上海时区）。
+   * - 必要任务：任务日期 + 1 天（次日逾期，逾期当天就是最后机会）
+   * - 作业/目标：截止日 + 顺延天数 + 1 天
+   * - 作业/目标未设截止日：视为不限时间，返回 null
+   */
+  lateSubmitDeadlineOf(
+    task: Pick<TaskInstance, 'type' | 'taskDate' | 'deadline' | 'extendDays'>,
+  ): string | null {
+    if (task.type === 'daily') {
+      return this.addDays(task.taskDate, LATE_SUBMIT_WINDOW_DAYS);
+    }
+    if (!task.deadline) return null;
+    return this.addDays(
+      task.deadline,
+      (task.extendDays ?? 0) + LATE_SUBMIT_WINDOW_DAYS,
+    );
+  }
+
   async submitTask(taskId: string, completionNote?: string): Promise<TaskInstance> {
     // 先读取当前状态，用于判断是否为逾期补提交
     const existing = await this.getTask(taskId);
     const isLateSubmit = existing.status === 'overdue';
+
+    // 逾期任务必须在逾期后 LATE_SUBMIT_WINDOW_DAYS 天内补提交，超期不再接受
+    const lateDeadline = this.lateSubmitDeadlineOf(existing);
+    if (isLateSubmit && lateDeadline && todayString() > lateDeadline) {
+      throw new BadRequestException(
+        `补提交期限已过（逾期后 ${LATE_SUBMIT_WINDOW_DAYS} 天内可补提交，已截止 ${lateDeadline}）`,
+      );
+    }
 
     // 条件更新避免并发重复提交（check-then-update 之间存在竞态）
     const updated = await this.db

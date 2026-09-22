@@ -95,7 +95,7 @@
         >
           <Clock class="mt-0.5 h-4 w-4 flex-shrink-0 text-[#FF4D4F]" />
           <p class="text-xs text-[#FF4D4F]">
-            有 {{ overdueTasks.length }} 个任务已逾期，完成后可点「申请补提交」，家长同意后照样得积分。
+            有 {{ overdueTasks.length }} 个任务已逾期（逾期后 1 天内可补提交），完成后点「申请补提交」，家长同意后照样得积分。
           </p>
         </div>
 
@@ -152,6 +152,12 @@
                     ]"
                   >
                     {{ STATUS_CONFIG[task.status].label }}
+                  </span>
+                  <span
+                    v-if="task.status === 'overdue'"
+                    class="rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-[#FF8A3D]"
+                  >
+                    补提交截止 {{ lateSubmitDeadline(task) }}
                   </span>
                   <button
                     v-if="hasSubtasks(task.id)"
@@ -498,6 +504,18 @@ const sortedTasks = computed(() => [
 ]);
 
 /** 待完成 / 已逾期 的任务都可以勾选子任务（逾期后仍可补做） */
+/** 补提交截止日（与服务端规则一致）：必要任务=任务日+1 天；作业/目标=截止日+顺延+1 天 */
+const lateSubmitDeadline = (task: TaskInstance): string => {
+  const addDays = (dateStr: string, days: number): string => {
+    const d = new Date(`${dateStr}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + days);
+    return d.toISOString().slice(0, 10);
+  };
+  if (task.type === 'daily') return addDays(task.taskDate, 1);
+  if (!task.deadline) return '不限时间';
+  return addDays(task.deadline, (task.extendDays ?? 0) + 1);
+};
+
 const canToggleSubtask = (task: TaskInstance): boolean =>
   task.status === 'pending' || task.status === 'overdue';
 

@@ -1365,7 +1365,7 @@ const removeImage = (index: number): void => {
           </span>
         </div>
         <p class="mb-3 rounded-2xl bg-red-50 p-3 text-xs text-[#FF4D4F]">
-          逾期任务孩子可以「申请补提交」，提交后会出现在「待确认」里等你审批；不处理就会一直留在列表里。
+          逾期任务孩子可在逾期后 1 天内申请补提交，提交后会出现在「待确认」里等你审批；超过 1 天将不再显示。
         </p>
         <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           <div

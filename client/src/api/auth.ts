@@ -4,6 +4,7 @@ import type {
   AuthMeResponse,
   AuthUser,
   LoginRequest,
+  ParentAccount,
   RegisterRequest,
 } from '@shared/api.interface';
 
@@ -62,6 +63,30 @@ export async function saveChildAccount(data: {
 }): Promise<{ childId: string; username: string }> {
   const response = await apiClient.post<{ childId: string; username: string }>(
     '/api/auth/child-account',
+    data,
+  );
+  return response.data;
+}
+
+/** 家长：本家庭家长账号列表 */
+export async function listParentAccounts(): Promise<{
+  items: ParentAccount[];
+}> {
+  const response = await apiClient.get<{ items: ParentAccount[] }>(
+    '/api/auth/parent-accounts',
+  );
+  return response.data;
+}
+
+/** 家长：新增家长账号 / 重置家长密码 */
+export async function saveParentAccount(data: {
+  userId?: string;
+  username: string;
+  password: string;
+  displayName?: string;
+}): Promise<{ id: string; username: string }> {
+  const response = await apiClient.post<{ id: string; username: string }>(
+    '/api/auth/parent-account',
     data,
   );
   return response.data;

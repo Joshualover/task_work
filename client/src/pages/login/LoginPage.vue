@@ -98,7 +98,7 @@
             <p class="text-xs text-gray-400">
               {{
                 registerForm.role === 'parent'
-                  ? '家长注册后会自动创建家庭，并可在「孩子管理」中查看家庭邀请码'
+                  ? '家长注册：留空邀请码会新建家庭；填邀请码则加入已有家庭（如妈妈加入）'
                   : '孩子注册需要家长提供的 6 位家庭邀请码'
               }}
             </p>
@@ -140,6 +140,16 @@
               v-model:value="registerForm.familyName"
               placeholder="如：我的家庭"
               class="rounded-xl"
+            />
+          </div>
+          <div v-if="registerForm.role === 'parent'" class="space-y-2">
+            <Label class="text-sm font-medium text-[#1F2329]">
+              家庭邀请码（可选）
+            </Label>
+            <Input
+              v-model:value="registerForm.inviteCode"
+              placeholder="已有家庭填此码加入，留空则新建家庭"
+              class="rounded-xl uppercase"
             />
           </div>
           <div v-else class="space-y-2">
@@ -259,7 +269,7 @@ async function handleRegister(): Promise<void> {
       password: f.password,
       displayName: f.displayName.trim() || undefined,
       role: f.role,
-      inviteCode: f.role === 'child' ? f.inviteCode.trim().toUpperCase() : undefined,
+      inviteCode: f.role === 'child' ? f.inviteCode.trim().toUpperCase() : f.inviteCode.trim().toUpperCase() || undefined,
       familyName: f.role === 'parent' ? f.familyName.trim() || undefined : undefined,
     });
     toast.success('注册成功');

@@ -183,6 +183,85 @@ export class AuthService {
     return { childId, username: uname };
   }
 
+  /**
+   * 家长：列出本家庭的家长账号（同一家庭可以有多个家长，如爸爸/妈妈）
+   */
+  async listParentAccounts(
+    familyId: string,
+  ): Promise<
+    Array<{ id: string; username: string; displayName: string; createdAt: string }>
+  > {
+    const rows = await this.db
+      .select({
+        id: appUser.id,
+        username: appUser.username,
+        displayName: appUser.displayName,
+        createdAt: appUser.createdAt,
+      })
+      .from(appUser)
+      .where(and(eq(appUser.familyId, familyId), eq(appUser.role, 'parent')))
+      .orderBy(appUser.createdAt);
+    return rows.map((r) => ({
+      id: r.id,
+      username: r.username,
+      displayName: r.displayName ?? r.username,
+      createdAt: r.createdAt.toISOString(),
+    }));
+  }
+
+  /**
+   * 家长：新增家长账号 / 重置已有家长账号的密码。
+   * 不传 userId 则新建一个 parent 账号（与当前账号同一家庭，拥有相同管理权限）。
+   */
+  async upsertParentAccount(
+    familyId: string,
+    username?: string,
+    password?: string,
+    displayName?: string,
+    userId?: string,
+  ): Promise<{ id: string; username: string }> {
+    const uname = this.normalizeUsername(username);
+    this.validateCredentials(uname, password);
+
+    if (userId) {
+      const [existing] = await this.db
+        .select()
+        .from(appUser)
+        .where(
+          and(
+            eq(appUser.id, userId),
+            eq(appUser.familyId, familyId),
+            eq(appUser.role, 'parent'),
+          ),
+        )
+        .limit(1);
+      if (!existing) throw new NotFoundException('家长账号不存在');
+      if (existing.username !== uname) await this.assertUsernameFree(uname);
+      await this.db
+        .update(appUser)
+        .set({
+          username: uname,
+          passwordHash: hashPassword(password!),
+          displayName: displayName?.trim() || existing.displayName,
+          updatedAt: new Date(),
+        })
+        .where(eq(appUser.id, existing.id));
+      return { id: existing.id, username: uname };
+    }
+
+    await this.assertUsernameFree(uname);
+    const newId = randomUUID();
+    await this.db.insert(appUser).values({
+      id: newId,
+      familyId,
+      username: uname,
+      passwordHash: hashPassword(password!),
+      role: 'parent',
+      displayName: displayName?.trim() || uname,
+    });
+    return { id: newId, username: uname };
+  }
+
   async register(input: RegisterInput): Promise<AuthResult> {
     const role: UserRole = input.role === 'child' ? 'child' : 'parent';
     const username = this.normalizeUsername(input.username);
@@ -201,6 +280,29 @@ export class AuthService {
   ): Promise<AuthResult> {
     const userId = randomUUID();
     const displayName = input.displayName?.trim() || username;
+
+    // 填了家庭邀请码 → 作为家长加入已有家庭（如妈妈自己注册加入本家庭）
+    const joinCode = (input.inviteCode ?? '').trim().toUpperCase();
+    if (joinCode) {
+      const [joined] = await this.db
+        .select()
+        .from(family)
+        .where(eq(family.inviteCode, joinCode))
+        .limit(1);
+      if (!joined) throw new BadRequestException('家庭邀请码无效');
+      const [user] = await this.db
+        .insert(appUser)
+        .values({
+          id: userId,
+          familyId: joined.id,
+          username,
+          passwordHash: hashPassword(input.password!),
+          role: 'parent',
+          displayName,
+        })
+        .returning();
+      return this.buildSession(user, joined.createdBy ?? userId);
+    }
 
     // 生成唯一邀请码
     let inviteCode = this.genInviteCode();
