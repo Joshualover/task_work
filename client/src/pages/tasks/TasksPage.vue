@@ -894,7 +894,7 @@ const removeImage = (index: number): void => {
                   variant="default"
                   :class="'rounded-full ' + STATUS_COLORS[task.status]"
                 >
-                  {{ STATUS_LABELS[task.status] }}
+                  {{ task.isLateSubmit && task.status === 'submitted' ? '补提交待确认' : STATUS_LABELS[task.status] }}
                 </Badge>
               </div>
             </div>
@@ -907,6 +907,19 @@ const removeImage = (index: number): void => {
               >
                 目标任务
               </Badge>
+              <Badge
+                v-if="task.isLateSubmit"
+                variant="default"
+                class="rounded-full bg-red-100 text-[#FF4D4F] border-transparent"
+              >
+                补提交
+              </Badge>
+              <span
+                v-if="task.taskDate !== today"
+                class="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500"
+              >
+                {{ task.taskDate }} 的任务
+              </span>
               <Badge
                 v-if="task.subject"
                 variant="outline"
@@ -1044,7 +1057,7 @@ const removeImage = (index: number): void => {
                   variant="default"
                   :class="'rounded-full ' + STATUS_COLORS[task.status]"
                 >
-                  {{ STATUS_LABELS[task.status] }}
+                  {{ task.isLateSubmit && task.status === 'submitted' ? '补提交待确认' : STATUS_LABELS[task.status] }}
                 </Badge>
               </div>
             </div>
@@ -1057,6 +1070,19 @@ const removeImage = (index: number): void => {
               >
                 目标任务
               </Badge>
+              <Badge
+                v-if="task.isLateSubmit"
+                variant="default"
+                class="rounded-full bg-red-100 text-[#FF4D4F] border-transparent"
+              >
+                补提交
+              </Badge>
+              <span
+                v-if="task.taskDate !== today"
+                class="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500"
+              >
+                {{ task.taskDate }} 的任务
+              </span>
               <Badge
                 v-if="task.subject"
                 variant="outline"
@@ -1203,7 +1229,7 @@ const removeImage = (index: number): void => {
                   variant="default"
                   :class="'rounded-full ' + STATUS_COLORS[task.status]"
                 >
-                  {{ STATUS_LABELS[task.status] }}
+                  {{ task.isLateSubmit && task.status === 'submitted' ? '补提交待确认' : STATUS_LABELS[task.status] }}
                 </Badge>
               </div>
             </div>
@@ -1216,6 +1242,19 @@ const removeImage = (index: number): void => {
               >
                 目标任务
               </Badge>
+              <Badge
+                v-if="task.isLateSubmit"
+                variant="default"
+                class="rounded-full bg-red-100 text-[#FF4D4F] border-transparent"
+              >
+                补提交
+              </Badge>
+              <span
+                v-if="task.taskDate !== today"
+                class="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500"
+              >
+                {{ task.taskDate }} 的任务
+              </span>
               <Badge
                 v-if="task.subject"
                 variant="outline"
@@ -1325,6 +1364,9 @@ const removeImage = (index: number): void => {
             {{ groupedTasks.overdue.length }}
           </span>
         </div>
+        <p class="mb-3 rounded-2xl bg-red-50 p-3 text-xs text-[#FF4D4F]">
+          逾期任务孩子可以「申请补提交」，提交后会出现在「待确认」里等你审批；不处理就会一直留在列表里。
+        </p>
         <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           <div
             v-for="task in groupedTasks.overdue"
@@ -1351,7 +1393,7 @@ const removeImage = (index: number): void => {
                   variant="default"
                   :class="'rounded-full ' + STATUS_COLORS[task.status]"
                 >
-                  {{ STATUS_LABELS[task.status] }}
+                  {{ task.isLateSubmit && task.status === 'submitted' ? '补提交待确认' : STATUS_LABELS[task.status] }}
                 </Badge>
               </div>
             </div>
@@ -1364,6 +1406,19 @@ const removeImage = (index: number): void => {
               >
                 目标任务
               </Badge>
+              <Badge
+                v-if="task.isLateSubmit"
+                variant="default"
+                class="rounded-full bg-red-100 text-[#FF4D4F] border-transparent"
+              >
+                补提交
+              </Badge>
+              <span
+                v-if="task.taskDate !== today"
+                class="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500"
+              >
+                {{ task.taskDate }} 的任务
+              </span>
               <Badge
                 v-if="task.subject"
                 variant="outline"
@@ -1492,7 +1547,7 @@ const removeImage = (index: number): void => {
                   variant="default"
                   :class="'rounded-full ' + STATUS_COLORS[task.status]"
                 >
-                  {{ STATUS_LABELS[task.status] }}
+                  {{ task.isLateSubmit && task.status === 'submitted' ? '补提交待确认' : STATUS_LABELS[task.status] }}
                 </Badge>
               </div>
             </div>
@@ -1505,6 +1560,19 @@ const removeImage = (index: number): void => {
               >
                 目标任务
               </Badge>
+              <Badge
+                v-if="task.isLateSubmit"
+                variant="default"
+                class="rounded-full bg-red-100 text-[#FF4D4F] border-transparent"
+              >
+                补提交
+              </Badge>
+              <span
+                v-if="task.taskDate !== today"
+                class="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500"
+              >
+                {{ task.taskDate }} 的任务
+              </span>
               <Badge
                 v-if="task.subject"
                 variant="outline"

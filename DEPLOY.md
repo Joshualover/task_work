@@ -306,6 +306,10 @@ server {
 ```bash
 cd /opt/task_work
 git pull
+
+# 增量迁移（如本次新增了该文件；脚本可重复执行，已存在则跳过）
+psql "$DATABASE_URL" -f server/database/migrations/2026-09-21_late_submit.sql
+
 npm install --ignore-scripts
 MIAODA_APP_TYPE=3 npm run build:prod
 pm2 restart task-work     # 或面板里重启

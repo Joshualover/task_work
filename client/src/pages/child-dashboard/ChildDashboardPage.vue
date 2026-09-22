@@ -85,7 +85,18 @@
       <div class="px-4 sm:px-6">
         <div class="mb-3 flex items-center justify-between">
           <h2 class="text-xl font-bold text-[#1F2329]">📋 今日任务</h2>
-          <span class="text-sm text-gray-500">共 {{ tasks.length }} 个</span>
+          <span class="text-sm text-gray-500">共 {{ todayTasks.length }} 个</span>
+        </div>
+
+        <!-- 逾期提醒：逾期任务可以申请补提交 -->
+        <div
+          v-if="!loading && overdueTasks.length > 0"
+          class="mb-3 flex items-start gap-2 rounded-2xl bg-red-50 p-3"
+        >
+          <Clock class="mt-0.5 h-4 w-4 flex-shrink-0 text-[#FF4D4F]" />
+          <p class="text-xs text-[#FF4D4F]">
+            有 {{ overdueTasks.length }} 个任务已逾期，完成后可点「申请补提交」，家长同意后照样得积分。
+          </p>
         </div>
 
         <div v-if="loading" class="rounded-2xl bg-white p-8 text-center shadow-md">
@@ -100,7 +111,7 @@
         </div>
         <div v-else class="space-y-3" data-ai-section-type="card-list">
           <div
-            v-for="task in tasks"
+            v-for="task in sortedTasks"
             :key="task.id"
             :class="[
               'rounded-2xl p-4 shadow-md transition-all hover:shadow-lg',
@@ -199,7 +210,7 @@
                     <button
                       type="button"
                       @click="handleToggleSubtask(task.id, subtask)"
-                      :disabled="task.status !== 'pending' || togglingSubtaskIds.has(subtask.id)"
+                      :disabled="!canToggleSubtask(task) || togglingSubtaskIds.has(subtask.id)"
                       class="mt-0.5 flex-shrink-0 transition-transform active:scale-90 disabled:cursor-not-allowed"
                     >
                       <CheckCircle2
@@ -257,7 +268,7 @@
                   </button>
                 </template>
                 <button
-                  v-if="task.status === 'pending' && task.type !== 'goal'"
+                  v-if="(task.status === 'pending' || task.status === 'overdue') && task.type !== 'goal'"
                   type="button"
                   @click="handleSubmitClick(task)"
                   :disabled="hasSubtasks(task.id) && !allSubtasksCompleted(task.id)"
@@ -266,15 +277,17 @@
                     'flex items-center gap-1 rounded-full px-4 py-1.5 text-sm font-medium shadow-md transition-all active:scale-95',
                     hasSubtasks(task.id) && !allSubtasksCompleted(task.id)
                       ? 'cursor-not-allowed bg-gray-300 text-gray-500 shadow-none'
-                      : 'bg-gradient-to-r from-[#52C41A] to-[#7BCF4A] text-white hover:shadow-lg',
+                      : task.status === 'overdue'
+                        ? 'bg-gradient-to-r from-[#FF8A3D] to-[#FFB347] text-white hover:shadow-lg'
+                        : 'bg-gradient-to-r from-[#52C41A] to-[#7BCF4A] text-white hover:shadow-lg',
                   ]"
                 >
                   <Check class="h-4 w-4" />
-                  我完成了
+                  {{ task.status === 'overdue' ? '申请补提交' : '我完成了' }}
                 </button>
                 <p
                   v-if="
-                    task.status === 'pending' &&
+                    (task.status === 'pending' || task.status === 'overdue') &&
                     hasSubtasks(task.id) &&
                     !allSubtasksCompleted(task.id)
                   "
@@ -340,16 +353,27 @@
         </template>
       </Dialog>
 
-      <!-- Submit confirm dialog -->
-      <Dialog v-model:model-value="submitDialogOpen" title="确认完成">
+      <!-- Submit confirm dialog（逾期任务则为「申请补提交」） -->
+      <Dialog
+        v-model:model-value="submitDialogOpen"
+        :title="lateSubmitMode ? '申请补提交' : '确认完成'"
+      >
         <div class="space-y-3">
           <p class="text-center text-sm text-gray-500">
             {{ selectedTask ? `「${selectedTask.name}」` : '' }}
           </p>
-          <p class="text-sm text-gray-500">告诉家长你是怎么完成的（选填）：</p>
+          <p
+            v-if="lateSubmitMode"
+            class="rounded-xl bg-orange-50 p-3 text-xs text-[#FF8A3D]"
+          >
+            这个任务已经逾期啦。补提交需要家长同意后才算完成，说说原因会更容易通过哦～
+          </p>
+          <p class="text-sm text-gray-500">
+            {{ lateSubmitMode ? '补提交说明（选填）：' : '告诉家长你是怎么完成的（选填）：' }}
+          </p>
           <Textarea
             v-model:model-value="submitNote"
-            placeholder="比如：我认真读了30分钟书..."
+            :placeholder="lateSubmitMode ? '比如：昨天生病了，今天补上...' : '比如：我认真读了30分钟书...'"
             :rows="4"
             class="min-h-[100px] rounded-xl"
           />
@@ -365,10 +389,15 @@
           </Button>
           <Button
             @click="handleConfirmSubmit"
-            class="flex-1 rounded-full bg-[#52C41A] hover:bg-[#45A91A]"
+            :class="[
+              'flex-1 rounded-full',
+              lateSubmitMode
+                ? 'bg-[#FF8A3D] hover:bg-[#FF7A2D]'
+                : 'bg-[#52C41A] hover:bg-[#45A91A]',
+            ]"
             :disabled="submitting"
           >
-            {{ submitting ? '提交中...' : '确认完成' }}
+            {{ submitting ? '提交中...' : lateSubmitMode ? '提交申请' : '确认完成' }}
           </Button>
         </template>
       </Dialog>
@@ -391,6 +420,7 @@ import {
   Circle,
   ListChecks,
   Plus,
+  Clock,
 } from 'lucide-vue-next';
 
 import { taskApi, pointApi, aiApi } from '@/api';
@@ -454,6 +484,27 @@ const submitDialogOpen = computed({
 });
 
 const todayStr = computed(() => todayString());
+
+/** 逾期任务（可申请补提交）/ 今日任务分组，逾期排在最前 */
+const overdueTasks = computed(() =>
+  tasks.value.filter((t: TaskInstance) => t.status === 'overdue'),
+);
+const todayTasks = computed(() =>
+  tasks.value.filter((t: TaskInstance) => t.status !== 'overdue'),
+);
+const sortedTasks = computed(() => [
+  ...overdueTasks.value,
+  ...todayTasks.value,
+]);
+
+/** 待完成 / 已逾期 的任务都可以勾选子任务（逾期后仍可补做） */
+const canToggleSubtask = (task: TaskInstance): boolean =>
+  task.status === 'pending' || task.status === 'overdue';
+
+/** 当前提交弹窗是否为「逾期补提交」 */
+const lateSubmitMode = computed(
+  () => selectedTask.value?.status === 'overdue',
+);
 
 /** 目标型任务：进度百分比 / 进度文案 */
 const goalPercent = (task: TaskInstance): string => {
@@ -532,10 +583,10 @@ const effectiveDeadline = (task: TaskInstance): string | null => {
 };
 
 const completedCount = computed(() =>
-  tasks.value.filter((t: TaskInstance) => t.status === 'completed').length,
+  todayTasks.value.filter((t: TaskInstance) => t.status === 'completed').length,
 );
 
-const totalCount = computed(() => tasks.value.length);
+const totalCount = computed(() => todayTasks.value.length);
 
 const progressPercent = computed(() =>
   totalCount.value > 0 ? `${(completedCount.value / totalCount.value) * 100}%` : '0%',
@@ -685,9 +736,13 @@ async function handleToggleSubtask(taskId: string, subtask: HomeworkSubtask): Pr
 
 async function handleConfirmSubmit(): Promise<void> {
   if (!selectedTask.value || submitting.value) return;
+  const isLate = selectedTask.value.status === 'overdue';
   try {
     submitting.value = true;
     await taskApi.submitTask(selectedTask.value.id, { completionNote: submitNote.value });
+    if (isLate) {
+      toast.info('补提交申请已发送，等待家长确认');
+    }
     encouragement.value = ENCOURAGEMENTS[Math.floor(Math.random() * ENCOURAGEMENTS.length)];
     showSuccess.value = true;
     selectedTask.value = null;

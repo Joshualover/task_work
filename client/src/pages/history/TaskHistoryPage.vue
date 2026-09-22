@@ -137,6 +137,12 @@
               >
                 {{ STATUS_STYLE[task.status].label }}
               </span>
+              <span
+                v-if="task.isLateSubmit"
+                class="rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-[#FF4D4F]"
+              >
+                补提交
+              </span>
               <span class="text-sm font-bold text-[#FF8A3D]">
                 {{ task.finalPoints ?? task.points }} 分
               </span>

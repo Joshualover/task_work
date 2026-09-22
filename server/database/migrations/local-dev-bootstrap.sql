@@ -162,6 +162,7 @@ CREATE TABLE IF NOT EXISTS task_instance (
   submit_time timestamptz(3),
   reject_reason varchar(500),
   completion_note text,
+  is_late_submit boolean NOT NULL DEFAULT false,
   _created_at timestamptz(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   _created_by user_profile DEFAULT (CASE WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL::user_profile END),
   _updated_at timestamptz(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,

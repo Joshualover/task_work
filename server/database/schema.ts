@@ -372,6 +372,8 @@ export const taskInstance = pgTable("task_instance", {
   submitTime: customTimestamptz("submit_time", { precision: 3 }),
   rejectReason: varchar("reject_reason", { length: 500 }),
   completionNote: text("completion_note"),
+  // 是否为逾期后的补提交（提交时任务已逾期）
+  isLateSubmit: boolean("is_late_submit").notNull().default(false),
   // System field: Creation time (auto-filled, do not modify)
   createdAt: customTimestamptz("_created_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
   // System field: Creator (auto-filled, do not modify)

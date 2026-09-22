@@ -60,6 +60,8 @@ export interface TaskInstance {
   submitTime: string | null;
   rejectReason: string | null;
   completionNote: string | null;
+  /** 是否为逾期后的补提交（提交时任务已逾期，需家长审批） */
+  isLateSubmit: boolean;
   createdAt: string;
   /** 子任务（多项任务才有；由后端按 suggestionId 关联返回） */
   subtasks?: HomeworkSubtask[];

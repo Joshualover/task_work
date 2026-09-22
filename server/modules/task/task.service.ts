@@ -272,13 +272,14 @@ export class TaskService {
     const conditions = [eq(taskInstance.childId, params.childId)];
 
     if (params.date) {
-      // 当天任务；此外，目标型任务只要未完成（待完成/待确认/逾期）就跨天保留显示，
-      // 避免“不限时间”的目标因日期变化而从任务池/孩子端消失。
+      // 当天任务；此外，此前仍未完成的任务（待完成/待确认/逾期）也跨天保留显示：
+      // 1) 目标型任务不限时间，未达成前一直显示；
+      // 2) 逾期任务需要让孩子申请补提交、让家长能看到并审批。
       conditions.push(
         or(
           eq(taskInstance.taskDate, params.date),
           and(
-            eq(taskInstance.type, 'goal'),
+            lt(taskInstance.taskDate, params.date),
             inArray(taskInstance.status, ['pending', 'submitted', 'overdue']),
           ),
         ),
@@ -348,11 +349,12 @@ export class TaskService {
     const conditions = [eq(taskInstance.childId, params.childId)];
 
     if (params.date) {
+      // 与 listTasks 保持一致：当天任务 + 此前未完成的任务
       conditions.push(
         or(
           eq(taskInstance.taskDate, params.date),
           and(
-            eq(taskInstance.type, 'goal'),
+            lt(taskInstance.taskDate, params.date),
             inArray(taskInstance.status, ['pending', 'submitted', 'overdue']),
           ),
         ),
@@ -567,7 +569,15 @@ export class TaskService {
     return this.mapTaskInstance(updated[0]);
   }
 
+  /**
+   * 提交任务完成（含逾期补提交）。
+   * 任务已逾期时标记 isLateSubmit=true，家长端会显示「补提交」标识，仍需家长审批。
+   */
   async submitTask(taskId: string, completionNote?: string): Promise<TaskInstance> {
+    // 先读取当前状态，用于判断是否为逾期补提交
+    const existing = await this.getTask(taskId);
+    const isLateSubmit = existing.status === 'overdue';
+
     // 条件更新避免并发重复提交（check-then-update 之间存在竞态）
     const updated = await this.db
       .update(taskInstance)
@@ -575,6 +585,7 @@ export class TaskService {
         status: 'submitted',
         submitTime: new Date(),
         completionNote: completionNote ?? null,
+        isLateSubmit,
       })
       .where(
         and(
@@ -589,14 +600,19 @@ export class TaskService {
       throw new BadRequestException(`任务状态为 ${task.status}，无法提交完成`);
     }
 
-    this.logger.log(`任务 ${taskId} 提交完成，状态变为 submitted`);
+    this.logger.log(
+      `任务 ${taskId} ${isLateSubmit ? '逾期补提交' : '提交完成'}，状态变为 submitted`,
+    );
     // 提醒家长待确认（失败不影响提交结果）
+    const noteText = completionNote ? `：${completionNote}` : '';
     await this.notificationService
       .create({
         childId: updated[0].childId,
         type: 'task_submitted',
-        title: '孩子提交了任务，待确认',
-        body: `${updated[0].name}（${updated[0].points} 积分）`,
+        title: isLateSubmit
+          ? '孩子申请补提交逾期任务，待确认'
+          : '孩子提交了任务，待确认',
+        body: `${updated[0].name}（${updated[0].points} 积分）${noteText}`,
         relatedType: 'task',
         relatedId: taskId,
       })
@@ -800,6 +816,7 @@ export class TaskService {
       submitTime: row.submitTime ? row.submitTime.toISOString() : null,
       rejectReason: row.rejectReason ?? null,
       completionNote: row.completionNote ?? null,
+      isLateSubmit: row.isLateSubmit ?? false,
       createdAt: row.createdAt.toISOString(),
     };
   }
