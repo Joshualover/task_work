@@ -14,10 +14,11 @@ import {
 import type { Request } from 'express';
 
 import { NeedLogin } from '@lark-apaas/fullstack-nestjs-core';
-
+import { getAppUser } from '@server/common/utils/session';
 import { AiService } from './ai.service';
 import { FamilyService } from '../family/family.service';
 import { ChildService } from '../child/child.service';
+import type { TaskCreator } from '../task/task.service';
 import type {
   AiSettingResponse,
   UpdateAiSettingRequest,
@@ -59,6 +60,12 @@ export class AiController {
     if (child.familyId !== familyId) {
       throw new NotFoundException('孩子不存在');
     }
+  }
+
+  /** 当前操作人（用于记录「谁布置的任务」） */
+  private creatorOf(req: Request): TaskCreator {
+    const appUser = getAppUser(req);
+    return { userId: appUser?.uid ?? null, name: appUser?.displayName ?? null };
   }
 
   @NeedLogin()
@@ -200,6 +207,7 @@ export class AiController {
       body.suggestionIds,
       body.childId,
       body.taskId,
+      this.creatorOf(req),
     );
   }
 

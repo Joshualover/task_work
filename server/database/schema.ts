@@ -374,6 +374,9 @@ export const taskInstance = pgTable("task_instance", {
   completionNote: text("completion_note"),
   // 是否为逾期后的补提交（提交时任务已逾期）
   isLateSubmit: boolean("is_late_submit").notNull().default(false),
+  // 布置任务的家长（哪个管理员创建的）：id + 昵称快照
+  creatorUserId: uuid("creator_user_id"),
+  creatorName: varchar("creator_name", { length: 50 }),
   // System field: Creation time (auto-filled, do not modify)
   createdAt: customTimestamptz("_created_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
   // System field: Creator (auto-filled, do not modify)
@@ -418,6 +421,9 @@ export const taskTemplate = pgTable("task_template", {
   frequency: varchar("frequency", { length: 20 }).notNull().default('daily'),
   weekDays: integer("week_days").array().default([]),
   monthDays: integer("month_days").array().default([]),
+  // 创建者（哪位家长配置的）：id + 昵称快照
+  creatorUserId: uuid("creator_user_id"),
+  creatorName: varchar("creator_name", { length: 50 }),
   // System field: Creation time (auto-filled, do not modify)
   createdAt: customTimestamptz("_created_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
   // System field: Creator (auto-filled, do not modify)

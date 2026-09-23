@@ -24,6 +24,12 @@ import { NotificationService } from '../notification/notification.service';
  */
 export const LATE_SUBMIT_WINDOW_DAYS = 1;
 
+/** 任务创建者（哪位家长布置的） */
+export interface TaskCreator {
+  userId: string | null;
+  name: string | null;
+}
+
 @Injectable()
 export class TaskService {
   private readonly logger = new Logger(TaskService.name);
@@ -60,6 +66,7 @@ export class TaskService {
   async createTemplate(
     familyId: string,
     data: CreateTaskTemplateRequest,
+    creator?: TaskCreator,
   ): Promise<TaskTemplate> {
     const frequency = data.frequency ?? (data.isDaily ? 'daily' : 'daily');
     const [row] = await this.db
@@ -73,6 +80,8 @@ export class TaskService {
         weekDays: data.weekDays ?? [],
         monthDays: data.monthDays ?? [],
         sortOrder: data.sortOrder ?? 0,
+        creatorUserId: creator?.userId ?? null,
+        creatorName: creator?.name ?? null,
       })
       .returning();
 
@@ -157,7 +166,11 @@ export class TaskService {
 
   // ==================== 任务实例部分 ====================
 
-  async generateDailyTasks(childId: string, date: string): Promise<TaskInstance[]> {
+  async generateDailyTasks(
+    childId: string,
+    date: string,
+    creator?: TaskCreator,
+  ): Promise<TaskInstance[]> {
     const childRecord = await this.db
       .select({ familyId: child.familyId })
       .from(child)
@@ -244,6 +257,9 @@ export class TaskService {
       submitTime: null,
       rejectReason: null,
       completionNote: null,
+      // 必要任务：布置人取自模板创建者（模板未记录时回退到本次操作人）
+      creatorUserId: t.creatorUserId ?? creator?.userId ?? null,
+      creatorName: t.creatorName ?? creator?.name ?? null,
     }));
 
     let inserted: (typeof taskInstance.$inferSelect)[];
@@ -429,7 +445,11 @@ export class TaskService {
     return this.mapTaskInstance(rows[0]);
   }
 
-  async createHomeworkTask(data: CreateHomeworkTaskRequest): Promise<TaskInstance> {    const [row] = await this.db
+  async createHomeworkTask(
+    data: CreateHomeworkTaskRequest,
+    creator?: TaskCreator,
+  ): Promise<TaskInstance> {
+    const [row] = await this.db
       .insert(taskInstance)
       .values({
         childId: data.childId,
@@ -447,6 +467,8 @@ export class TaskService {
         submitTime: null,
         rejectReason: null,
         completionNote: null,
+        creatorUserId: creator?.userId ?? null,
+        creatorName: creator?.name ?? null,
       })
       .returning();
 
@@ -501,7 +523,10 @@ export class TaskService {
   }
 
   /** 新建目标型任务（不限时间时可省略 deadline） */
-  async createGoalTask(data: CreateGoalTaskRequest): Promise<TaskInstance> {
+  async createGoalTask(
+    data: CreateGoalTaskRequest,
+    creator?: TaskCreator,
+  ): Promise<TaskInstance> {
     if (!data.name || !data.name.trim()) {
       throw new BadRequestException('任务名称不能为空');
     }
@@ -531,6 +556,8 @@ export class TaskService {
         submitTime: null,
         rejectReason: null,
         completionNote: null,
+        creatorUserId: creator?.userId ?? null,
+        creatorName: creator?.name ?? null,
       })
       .returning();
 
@@ -982,6 +1009,8 @@ export class TaskService {
       rejectReason: row.rejectReason ?? null,
       completionNote: row.completionNote ?? null,
       isLateSubmit: row.isLateSubmit ?? false,
+      creatorUserId: row.creatorUserId ?? null,
+      creatorName: row.creatorName ?? null,
       createdAt: row.createdAt.toISOString(),
     };
   }

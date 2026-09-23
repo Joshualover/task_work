@@ -143,6 +143,12 @@
               >
                 补提交
               </span>
+              <span
+                v-if="task.creatorName"
+                class="rounded-full bg-purple-50 px-2 py-0.5 text-xs text-purple-600"
+              >
+                {{ task.creatorName }} 布置
+              </span>
               <span class="text-sm font-bold text-[#FF8A3D]">
                 {{ task.finalPoints ?? task.points }} 分
               </span>

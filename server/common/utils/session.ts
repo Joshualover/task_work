@@ -65,3 +65,12 @@ export function verifySession(token: string | undefined | null): SessionPayload 
     return null;
   }
 }
+
+/**
+ * 取当前请求的应用登录态（APP_LOGIN=true 时由 server/main.ts 中间件注入到 req.appUser）。
+ * 未开启应用登录（STANDALONE_USER_ID 模式）时返回 null。
+ */
+export function getAppUser(req: unknown): SessionPayload | null {
+  const appUser = (req as { appUser?: SessionPayload } | null)?.appUser;
+  return appUser ?? null;
+}

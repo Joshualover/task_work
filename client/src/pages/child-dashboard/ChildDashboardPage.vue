@@ -207,6 +207,13 @@
                   >
                     补提交截止 {{ lateSubmitDeadline(task) }}
                   </span>
+                  <span
+                    v-if="task.creatorName"
+                    class="flex items-center gap-1 rounded-full bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-600"
+                  >
+                    <User class="h-3 w-3" />
+                    {{ task.creatorName }} 布置
+                  </span>
                   <button
                     v-if="hasSubtasks(task.id)"
                     type="button"
@@ -508,6 +515,7 @@ import {
   ListChecks,
   Plus,
   Clock,
+  User,
 } from 'lucide-vue-next';
 
 import { taskApi, pointApi, aiApi } from '@/api';

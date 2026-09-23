@@ -4,7 +4,7 @@ import { logger } from '@lark-apaas/client-toolkit/logger';
 import {
   Plus, Clock, CheckCircle, XCircle, AlertCircle, BookOpen, Star,
   Trash2, Sparkles, Upload, FileText, X, Image as ImageIcon,
-  ChevronDown, ChevronUp, Edit3, CheckCircle2, Circle,
+  ChevronDown, ChevronUp, Edit3, CheckCircle2, Circle, User,
 } from 'lucide-vue-next';
 import Button from '@/components/ui/Button.vue';
 import Dialog from '@/components/ui/Dialog.vue';
@@ -963,6 +963,13 @@ const removeImage = (index: number): void => {
               >
                 {{ task.subject }}
               </Badge>
+              <span
+                v-if="task.creatorName"
+                class="flex items-center gap-1 rounded-full bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-600"
+              >
+                <User class="h-3 w-3" />
+                {{ task.creatorName }} 布置
+              </span>
               <Badge
                 variant="default"
                 class="rounded-full bg-orange-100 text-[#FF8A3D] border-transparent"
@@ -1135,6 +1142,13 @@ const removeImage = (index: number): void => {
               >
                 {{ task.subject }}
               </Badge>
+              <span
+                v-if="task.creatorName"
+                class="flex items-center gap-1 rounded-full bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-600"
+              >
+                <User class="h-3 w-3" />
+                {{ task.creatorName }} 布置
+              </span>
               <Badge
                 variant="default"
                 class="rounded-full bg-orange-100 text-[#FF8A3D] border-transparent"
@@ -1307,6 +1321,13 @@ const removeImage = (index: number): void => {
               >
                 {{ task.subject }}
               </Badge>
+              <span
+                v-if="task.creatorName"
+                class="flex items-center gap-1 rounded-full bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-600"
+              >
+                <User class="h-3 w-3" />
+                {{ task.creatorName }} 布置
+              </span>
               <Badge
                 variant="default"
                 class="rounded-full bg-orange-100 text-[#FF8A3D] border-transparent"
@@ -1471,6 +1492,13 @@ const removeImage = (index: number): void => {
               >
                 {{ task.subject }}
               </Badge>
+              <span
+                v-if="task.creatorName"
+                class="flex items-center gap-1 rounded-full bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-600"
+              >
+                <User class="h-3 w-3" />
+                {{ task.creatorName }} 布置
+              </span>
               <Badge
                 variant="default"
                 class="rounded-full bg-orange-100 text-[#FF8A3D] border-transparent"
@@ -1625,6 +1653,13 @@ const removeImage = (index: number): void => {
               >
                 {{ task.subject }}
               </Badge>
+              <span
+                v-if="task.creatorName"
+                class="flex items-center gap-1 rounded-full bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-600"
+              >
+                <User class="h-3 w-3" />
+                {{ task.creatorName }} 布置
+              </span>
               <Badge
                 variant="default"
                 class="rounded-full bg-orange-100 text-[#FF8A3D] border-transparent"

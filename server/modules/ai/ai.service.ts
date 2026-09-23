@@ -6,6 +6,7 @@ import { firstValueFrom } from 'rxjs';
 
 import { todayString } from '@server/common/utils/date';
 import { TaskService } from '../task/task.service';
+import type { TaskCreator } from '../task/task.service';
 import {
   encryptSecret,
   decryptSecret,
@@ -883,6 +884,7 @@ export class AiService {
     suggestionIds: string[],
     childId: string,
     taskId?: string,
+    creator?: TaskCreator,
   ): Promise<{ confirmedCount: number }> {
     if (suggestionIds.length === 0) {
       return { confirmedCount: 0 };
@@ -939,6 +941,8 @@ export class AiService {
         extendDays: s.extendDays ?? 0,
         taskDate: todayStr,
         status: 'pending' as const,
+        creatorUserId: creator?.userId ?? null,
+        creatorName: creator?.name ?? null,
       }));
 
       await tx.insert(taskInstance).values(taskValues);

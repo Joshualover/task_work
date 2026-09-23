@@ -34,6 +34,8 @@ import type {
   TaskType,
 } from '@shared/api.interface';
 import { NeedLogin } from '@lark-apaas/fullstack-nestjs-core';
+import { getAppUser } from '@server/common/utils/session';
+import type { TaskCreator } from './task.service';
 import {
   IsString,
   IsNumber,
@@ -329,6 +331,12 @@ export class TaskController {
     await this.familyService.assertChildInFamily(childId, family.id);
   }
 
+  /** 当前操作人（用于记录「谁布置的任务」） */
+  private creatorOf(req: Request): TaskCreator {
+    const appUser = getAppUser(req);
+    return { userId: appUser?.uid ?? null, name: appUser?.displayName ?? null };
+  }
+
   /** 批量接口：校验所有任务都属于本家庭的孩子（防越权） */
   private async assertTasksOfOwnChild(
     req: Request,
@@ -360,7 +368,7 @@ export class TaskController {
   ): Promise<{ template: TaskTemplate }> {
     const { userId } = req.userContext;
     const family = await this.familyService.getOrCreateFamily(userId);
-    const template = await this.taskService.createTemplate(family.id, dto);
+    const template = await this.taskService.createTemplate(family.id, dto, this.creatorOf(req));
     return { template };
   }
 
@@ -398,7 +406,7 @@ export class TaskController {
     @Body() dto: GenerateDailyTasksDto,
   ): Promise<{ items: TaskInstance[] }> {
     await this.assertChild(req, dto.childId);
-    const items = await this.taskService.generateDailyTasks(dto.childId, dto.date);
+    const items = await this.taskService.generateDailyTasks(dto.childId, dto.date, this.creatorOf(req));
     return { items };
   }
 
@@ -432,7 +440,7 @@ export class TaskController {
     @Body() dto: CreateHomeworkTaskDto,
   ): Promise<{ task: TaskInstance }> {
     await this.assertChild(req, dto.childId);
-    const task = await this.taskService.createHomeworkTask(dto);
+    const task = await this.taskService.createHomeworkTask(dto, this.creatorOf(req));
     return { task };
   }
 
@@ -443,7 +451,7 @@ export class TaskController {
     @Body() dto: CreateGoalTaskDto,
   ): Promise<{ task: TaskInstance }> {
     await this.assertChild(req, dto.childId);
-    const task = await this.taskService.createGoalTask(dto);
+    const task = await this.taskService.createGoalTask(dto, this.creatorOf(req));
     return { task };
   }
 
