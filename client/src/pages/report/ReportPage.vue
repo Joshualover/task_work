@@ -106,60 +106,34 @@
         </div>
       </div>
 
-      <!-- Charts (CSS bar replacement) -->
+      <!-- 趋势图表（ECharts） -->
       <div class="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
         <!-- 积分趋势 -->
         <div class="rounded-2xl bg-white p-4 shadow-md">
-          <div class="mb-3 flex items-center gap-2">
+          <div class="flex items-center gap-2">
             <TrendingUp class="h-5 w-5 text-[#FF8A3D]" />
             <h2 class="text-lg font-semibold text-[#1F2329]">积分趋势</h2>
-            <span class="text-sm text-gray-400">（近4周）</span>
+            <span class="text-sm text-gray-400">（近 4 周）</span>
           </div>
-          <div class="h-[300px]">
-            <div class="flex h-full items-end justify-around gap-2 pb-10 pt-4">
-              <div
-                v-for="item in stats?.weeklyTrend ?? []"
-                :key="item.week"
-                class="flex flex-1 flex-col items-center gap-2"
-              >
-                <span class="text-sm font-semibold text-[#FF8A3D]">{{ item.points }}</span>
-                <div
-                  class="w-full max-w-[40px] rounded-t-lg bg-gradient-to-t from-[#FF8A3D] to-[#FFB37A] transition-all"
-                  :style="{ height: `${trendBarHeight(item.points, 'points')}%` }"
-                />
-                <span class="text-xs text-gray-500">{{ item.week.slice(5) }}</span>
-              </div>
-            </div>
-            <div class="mt-2 text-center text-xs text-gray-400">单位：积分</div>
-          </div>
+          <p class="mb-1 text-xs text-gray-400">每周累计获得积分</p>
+          <div ref="pointsChartRef" class="h-[260px] w-full"></div>
+          <p v-if="noTrendData" class="mt-1 text-center text-xs text-gray-400">
+            近 4 周还没有完成任务，通过审批后这里会显示趋势
+          </p>
         </div>
 
         <!-- 完成率趋势 -->
         <div class="rounded-2xl bg-white p-4 shadow-md">
-          <div class="mb-3 flex items-center gap-2">
+          <div class="flex items-center gap-2">
             <Target class="h-5 w-5 text-[#36BFFA]" />
             <h2 class="text-lg font-semibold text-[#1F2329]">完成率趋势</h2>
-            <span class="text-sm text-gray-400">（近4周）</span>
+            <span class="text-sm text-gray-400">（近 4 周）</span>
           </div>
-          <div class="h-[300px]">
-            <div class="flex h-full items-end justify-around gap-2 pb-10 pt-4">
-              <div
-                v-for="item in stats?.weeklyTrend ?? []"
-                :key="item.week"
-                class="flex flex-1 flex-col items-center gap-2"
-              >
-                <span class="text-sm font-semibold text-[#36BFFA]">
-                  {{ Math.round(item.completionRate * 100) }}%
-                </span>
-                <div
-                  class="w-full max-w-[40px] rounded-t-lg bg-gradient-to-t from-[#36BFFA] to-[#7DD3FC] transition-all"
-                  :style="{ height: `${trendBarHeight(item.completionRate * 100, 'completion')}%` }"
-                />
-                <span class="text-xs text-gray-500">{{ item.week.slice(5) }}</span>
-              </div>
-            </div>
-            <div class="mt-2 text-center text-xs text-gray-400">单位：%</div>
-          </div>
+          <p class="mb-1 text-xs text-gray-400">每周完成任务 / 当周任务总数</p>
+          <div ref="rateChartRef" class="h-[260px] w-full"></div>
+          <p v-if="noTrendData" class="mt-1 text-center text-xs text-gray-400">
+            暂无统计数据，布置任务后即可看到完成率变化
+          </p>
         </div>
       </div>
     </template>
@@ -167,16 +141,23 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { logger } from '@lark-apaas/client-toolkit/logger';
 import { CheckCircle2, Target, Coins, Gift, TrendingUp } from 'lucide-vue-next';
+import * as echarts from 'echarts/core';
+import { BarChart, LineChart } from 'echarts/charts';
+import { GridComponent, TooltipComponent } from 'echarts/components';
+import { CanvasRenderer } from 'echarts/renderers';
 
 import { reportApi } from '@/api';
 import { useChildStore } from '@/stores/child';
+import { completionRateOption, pointsTrendOption } from '@/utils/report-charts';
 import type { ReportStatsResponse } from '@shared/api.interface';
 
-const childStore = useChildStore();
+// 按需注册，避免把整个 echarts 打进产物
+echarts.use([BarChart, LineChart, GridComponent, TooltipComponent, CanvasRenderer]);
 
+const childStore = useChildStore();
 const stats = ref<ReportStatsResponse | null>(null);
 const loading = ref<boolean>(true);
 const error = ref<string | null>(null);
@@ -187,15 +168,45 @@ const completionPercent = computed(() =>
   stats.value ? Math.round(stats.value.dailyTaskCompletionRate * 100) : 0,
 );
 
-function trendBarHeight(value: number, type: 'points' | 'completion'): number {
+/** 近 4 周完全没有数据（用于展示引导文案，而不是空白图） */
+const noTrendData = computed(() => {
   const trend = stats.value?.weeklyTrend ?? [];
-  if (trend.length === 0) return 0;
-  if (type === 'completion') {
-    // completion 已经是百分比 0-100
-    return Math.max(5, value);
-  }
-  const maxVal = Math.max(...trend.map((t) => t.points), 1);
-  return Math.max(5, (value / maxVal) * 80);
+  if (trend.length === 0) return true;
+  return trend.every((t) => t.points === 0 && t.completionRate === 0);
+});
+
+// ==================== 图表 ====================
+const pointsChartRef = ref<HTMLDivElement | null>(null);
+const rateChartRef = ref<HTMLDivElement | null>(null);
+let pointsChart: echarts.ECharts | null = null;
+let rateChart: echarts.ECharts | null = null;
+
+function renderPointsChart(): void {
+  if (!pointsChartRef.value) return;
+  pointsChart ??= echarts.init(pointsChartRef.value);
+  pointsChart.setOption(pointsTrendOption(stats.value?.weeklyTrend ?? []));
+}
+
+function renderRateChart(): void {
+  if (!rateChartRef.value) return;
+  rateChart ??= echarts.init(rateChartRef.value);
+  rateChart.setOption(completionRateOption(stats.value?.weeklyTrend ?? []));
+}
+
+/** 图表容器在 v-else 分支里，必须等 DOM 渲染后再初始化 */
+async function renderCharts(): Promise<void> {
+  await nextTick();
+  renderPointsChart();
+  renderRateChart();
+  pointsChart?.resize();
+  rateChart?.resize();
+}
+
+function disposeCharts(): void {
+  pointsChart?.dispose();
+  rateChart?.dispose();
+  pointsChart = null;
+  rateChart = null;
 }
 
 async function loadStats(): Promise<void> {
@@ -203,6 +214,8 @@ async function loadStats(): Promise<void> {
   try {
     loading.value = true;
     error.value = null;
+    // 切换孩子时容器会被卸载，先销毁旧实例，避免挂在已脱离的 DOM 上
+    disposeCharts();
     const data = await reportApi.getStats(currentChild.value.id);
     stats.value = data;
   } catch (err) {
@@ -220,7 +233,25 @@ watch(
   },
 );
 
+// 数据到位 + 加载结束（此时 v-else 分支的图表容器才挂载）后重绘
+watch([stats, loading], () => {
+  if (loading.value || !stats.value) return;
+  void renderCharts();
+});
+
+/** 窗口尺寸变化时自适应（含移动端旋转屏） */
+function handleResize(): void {
+  pointsChart?.resize();
+  rateChart?.resize();
+}
+
 onMounted(() => {
   void loadStats();
+  window.addEventListener('resize', handleResize);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('resize', handleResize);
+  disposeCharts();
 });
 </script>
