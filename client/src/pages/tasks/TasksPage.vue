@@ -849,7 +849,7 @@ const removeImage = (index: number): void => {
           class="rounded-full bg-[#FF8A3D] hover:bg-[#FF7A1F] text-white shadow-md"
         >
           <Plus class="h-5 w-5" />
-          添加作业
+          添加任务
         </Button>
       </div>
     </div>
