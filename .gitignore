@@ -67,3 +67,6 @@ pnpm-lock.yaml
 # Agent files
 .agent/
 .npm_cache
+
+# Agent 工作目录（workbuddy 等工具的临时记忆）
+.workbuddy/

@@ -12,7 +12,7 @@ import { randomUUID } from 'node:crypto';
 
 import { appUser, child, family } from '@server/database/schema';
 import { hashPassword, verifyPassword } from '@server/common/utils/password';
-import { signSession, type SessionPayload } from '@server/common/utils/session';
+import { signSession, passwordVersion, type SessionPayload } from '@server/common/utils/session';
 
 export type UserRole = 'parent' | 'child';
 
@@ -470,6 +470,8 @@ export class AuthService {
       ownerId,
       displayName: user.displayName ?? user.username,
       exp: Date.now() + 7 * 24 * 60 * 60 * 1000,
+      // 记录密码版本：改密后旧会话失效（main.ts 中间件校验）
+      pv: passwordVersion(user.passwordHash),
     };
     return { token: signSession(payload), user: this.publicUser(user) };
   }

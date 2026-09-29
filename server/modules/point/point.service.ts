@@ -47,8 +47,11 @@ export class PointService {
     pageSize: number;
   }> {
     const { childId, page = 1, pageSize = 20 } = params;
-    const pageNum = Math.max(1, page);
-    const pageSizeNum = Math.max(1, Math.min(100, pageSize));
+    // 防御：controller parseInt('abc') 会产生 NaN，这里统一兜底，避免 LIMIT NaN 导致 500
+    const pageNum = Number.isFinite(page) ? Math.max(1, Math.trunc(page)) : 1;
+    const pageSizeNum = Number.isFinite(pageSize)
+      ? Math.max(1, Math.min(100, Math.trunc(pageSize)))
+      : 20;
     const offset = (pageNum - 1) * pageSizeNum;
 
     const [itemsResult, countResult] = await Promise.all([

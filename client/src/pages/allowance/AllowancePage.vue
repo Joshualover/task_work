@@ -367,6 +367,7 @@ import Label from '@/components/ui/Label.vue';
 import { toast } from '@/components/ui/toast';
 import { getErrorMessage } from '@/utils/error';
 import { fenToYuan, yuanToFen } from '@/utils/money';
+import { createLatestGuard } from '@/utils/request-guard';
 import { allowanceApi } from '@/api';
 import { useChildStore } from '@/stores/child';
 import type {
@@ -436,8 +437,12 @@ function formatDate(dateStr: string): string {
   });
 }
 
+// 竞态守卫：快速切换孩子/模式时丢弃慢的旧响应
+const fetchAllGuard = createLatestGuard();
+
 async function fetchAll(): Promise<void> {
   if (props.mode === 'child' && !childId.value) return;
+  const isLatest = fetchAllGuard();
   loading.value = true;
   try {
     // 家长看整个家庭，孩子只看自己
@@ -453,6 +458,7 @@ async function fetchAll(): Promise<void> {
       }),
       allowanceApi.listRequests({ childId: queryChildId }),
     ]);
+    if (!isLatest()) return;
     balance.value = balanceRes.balance;
     transactions.value = txRes.items;
     total.value = txRes.total;
@@ -460,7 +466,7 @@ async function fetchAll(): Promise<void> {
   } catch (error) {
     logger.error('获取零花钱数据失败', error);
   } finally {
-    loading.value = false;
+    if (isLatest()) loading.value = false;
   }
 }
 

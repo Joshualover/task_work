@@ -221,6 +221,7 @@ const handleDeleteConfirm = async () => {
     await fetchRewards();
   } catch (error) {
     logger.error('删除奖励失败', error);
+    toast.error(getErrorMessage(error, '删除失败，请重试'));
   }
 };
 
@@ -230,6 +231,7 @@ const handleToggleActive = async (reward: Reward) => {
     await fetchRewards();
   } catch (error) {
     logger.error('切换奖励状态失败', error);
+    toast.error(getErrorMessage(error, '操作失败，请重试'));
   }
 };
 

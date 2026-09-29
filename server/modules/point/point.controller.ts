@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { NeedLogin } from '@lark-apaas/fullstack-nestjs-core';
 import type { Request } from 'express';
+import { IsUUID, IsInt, IsString, MaxLength } from 'class-validator';
 import { PointService } from './point.service';
 import { FamilyService } from '../family/family.service';
 
@@ -18,12 +19,17 @@ import type {
   PointTransactionListResponse,
   PointTransactionType,
   PointTransactionRelatedType,
-  AdjustPointsRequest,
 } from '@shared/api.interface';
 
-class AdjustPointsBody implements AdjustPointsRequest {
+class AdjustPointsBody {
+  @IsUUID()
   childId!: string;
+
+  @IsInt()
   changeAmount!: number;
+
+  @IsString()
+  @MaxLength(100)
   reason!: string;
 }
 

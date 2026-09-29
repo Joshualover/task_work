@@ -18,6 +18,16 @@ export interface SessionPayload {
   ownerId: string;
   displayName: string;
   exp: number;
+  /**
+   * 密码版本（密码哈希尾段指纹）：修改密码后旧会话自动失效。
+   * 旧版本会话无此字段，到期前仍然有效（平滑迁移）。
+   */
+  pv?: string;
+}
+
+/** 从密码哈希提取会话校验用的版本指纹（哈希含随机盐，每次改密都会变化） */
+export function passwordVersion(passwordHash: string): string {
+  return passwordHash.slice(-16);
 }
 
 export const SESSION_COOKIE = 'tw_session';
@@ -26,6 +36,13 @@ const DEFAULT_SECRET = 'task-work-dev-session-secret-change-me';
 function getSecret(): string {
   const secret = process.env.SESSION_SECRET;
   if (!secret) {
+    // 安全兜底：非 development 环境拒绝使用开发默认密钥签发/校验会话，
+    // 防止源码中的硬编码密钥被用来伪造任意身份的会话令牌。
+    if (process.env.NODE_ENV !== 'development') {
+      throw new Error(
+        'SESSION_SECRET 未设置：非开发环境禁止使用默认密钥。请配置 SESSION_SECRET 后重启。',
+      );
+    }
     // 仅提示一次，避免刷屏
     if (!getSecret.warned) {
       getSecret.warned = true;
@@ -34,6 +51,9 @@ function getSecret(): string {
       );
     }
     return DEFAULT_SECRET;
+  }
+  if (secret.length < 32) {
+    logger.warn('SESSION_SECRET 长度不足 32 字符，建议更换为更强的随机密钥。');
   }
   return secret;
 }

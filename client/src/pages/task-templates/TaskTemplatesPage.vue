@@ -274,6 +274,8 @@ import { logger } from '@lark-apaas/client-toolkit/logger';
 import { Plus, Pencil, Trash2, Star, GripVertical } from 'lucide-vue-next';
 
 import { taskApi, familyApi } from '@/api';
+import { toast } from '@/components/ui/toast';
+import { getErrorMessage } from '@/utils/error';
 import Button from '@/components/ui/Button.vue';
 import Dialog from '@/components/ui/Dialog.vue';
 import Input from '@/components/ui/Input.vue';
@@ -486,6 +488,7 @@ async function handleSubmit(): Promise<void> {
     void fetchTemplates();
   } catch (error) {
     logger.error('保存任务模板失败', error);
+    toast.error(getErrorMessage(error, '保存失败，请重试'));
   }
 }
 
@@ -497,6 +500,7 @@ async function handleToggleActive(template: TaskTemplate): Promise<void> {
     void fetchTemplates();
   } catch (error) {
     logger.error('切换模板状态失败', error);
+    toast.error(getErrorMessage(error, '操作失败，请重试'));
   }
 }
 
@@ -514,6 +518,7 @@ async function handleDeleteConfirm(): Promise<void> {
     void fetchTemplates();
   } catch (error) {
     logger.error('删除任务模板失败', error);
+    toast.error(getErrorMessage(error, '删除失败，请重试'));
   }
 }
 </script>

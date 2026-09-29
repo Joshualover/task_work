@@ -1,9 +1,12 @@
 import { apiClient } from './client';
-import type { ReportStatsResponse } from '@shared/api.interface';
+import type { ReportRange, ReportStatsResponse } from '@shared/api.interface';
 
-export async function getStats(childId: string): Promise<ReportStatsResponse> {
+export async function getStats(
+  childId: string,
+  range: ReportRange = 'week',
+): Promise<ReportStatsResponse> {
   const response = await apiClient.get<ReportStatsResponse>('/api/report/stats', {
-    params: { childId },
+    params: { childId, range },
   });
   return response.data;
 }

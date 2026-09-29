@@ -5,15 +5,15 @@
  */
 import type { ReportStatsResponse } from '@shared/api.interface';
 
-export type TrendPoint = ReportStatsResponse['weeklyTrend'][number];
+export type TrendPoint = ReportStatsResponse['trend'][number];
 
 const COLOR_ORANGE = '#FF8A3D';
 const COLOR_BLUE = '#36BFFA';
 const AXIS_LABEL_COLOR = '#9CA3AF';
 
-/** 周标签：2026-09-07 -> 09/07 */
+/** 日期标签：2026-09-07 -> 09/07 */
 export function trendLabels(trend: TrendPoint[]): string[] {
-  return trend.map((t) => t.week.slice(5).replace('-', '/'));
+  return trend.map((t) => t.date.slice(5).replace('-', '/'));
 }
 
 const baseGrid = { left: 4, right: 12, top: 34, bottom: 4, containLabel: true };

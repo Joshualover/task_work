@@ -163,7 +163,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { logger } from '@lark-apaas/client-toolkit/logger';
 import {
   Coins,
@@ -220,7 +220,9 @@ const pendingRedemptions = ref<number>(0);
 const loading = ref<boolean>(true);
 const thisWeekPoints = ref<number>(0);
 
-const todayStr = computed(() => todayString());
+// 每分钟刷新的"今天"：跨午夜后重新拉取看板数据
+const todayStr = ref<string>(todayString());
+let todayTimer: number | null = null;
 
 const greeting = computed(() => {
   const hour = new Date().getHours();
@@ -291,6 +293,20 @@ onMounted(() => {
     void childStore.fetchChildren();
   } else {
     void loadDashboard();
+  }
+  todayTimer = window.setInterval(() => {
+    const next = todayString();
+    if (next !== todayStr.value) {
+      todayStr.value = next;
+      if (childStore.currentChildId) void loadDashboard();
+    }
+  }, 60000);
+});
+
+onUnmounted(() => {
+  if (todayTimer != null) {
+    window.clearInterval(todayTimer);
+    todayTimer = null;
   }
 });
 

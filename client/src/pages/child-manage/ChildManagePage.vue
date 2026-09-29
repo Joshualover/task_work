@@ -129,8 +129,15 @@
         class="rounded-2xl bg-white p-4 shadow-md transition-shadow hover:shadow-lg"
       >
         <div class="flex items-start gap-4">
-          <div class="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-orange-50 text-3xl">
-            {{ getAvatarDisplay(child.avatarUrl) }}
+          <div class="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-orange-50 text-3xl">
+            <span v-if="!child.avatarUrl">🧒</span>
+            <img
+              v-else
+              :src="child.avatarUrl"
+              :alt="child.name"
+              class="h-full w-full rounded-full object-cover"
+              referrerpolicy="no-referrer"
+            />
           </div>
           <div class="min-w-0 flex-1">
             <div class="flex items-center justify-between">
@@ -562,11 +569,6 @@ async function handleToggleActive(child: Child): Promise<void> {
   } catch (err) {
     logger.error('Failed to toggle child active status', err as Error);
   }
-}
-
-function getAvatarDisplay(avatarUrl: string | null): string {
-  if (avatarUrl) return avatarUrl;
-  return '🧒';
 }
 
 function copyInviteCode(): void {

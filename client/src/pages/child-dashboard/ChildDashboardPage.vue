@@ -500,7 +500,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, nextTick } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { logger } from '@lark-apaas/client-toolkit/logger';
 import {
   Star,
@@ -580,7 +580,8 @@ const submitDialogOpen = computed({
   },
 });
 
-const todayStr = computed(() => todayString());
+// 每分钟刷新的"今天"：跨午夜后 ref 变化会触发 watch 重新拉取任务
+const todayStr = ref<string>(todayString());
 
 /** 逾期任务（可申请补提交）/ 今日任务分组，逾期排在最前 */
 const overdueTasks = computed(() =>
@@ -920,11 +921,10 @@ async function handleToggleSubtask(taskId: string, subtask: HomeworkSubtask): Pr
       childId: currentChild.value.id,
       isCompleted: newCompleted,
     });
-    // 子任务全部完成后端会自动提交为「待审核」，静默刷新以反映最新状态（不重载页面/不回顶）
-    await loadTasks(true);
   } catch (err) {
     logger.error('Failed to toggle subtask', err as Error);
-    // 回滚
+    // 回滚：仅当勾选接口本身失败时才回滚。
+    // 注意不要把后续 loadTasks 的失败也当成本次勾选失败（勾选可能已成功）。
     const rollbackSubtasks = info.subtasks.map((s: HomeworkSubtask) =>
       s.id === subtask.id ? { ...s, isCompleted: !newCompleted } : s,
     );
@@ -932,6 +932,16 @@ async function handleToggleSubtask(taskId: string, subtask: HomeworkSubtask): Pr
       ...subtaskMap.value,
       [taskId]: { ...info, subtasks: rollbackSubtasks },
     };
+    toast.error('操作失败，请重试');
+    return;
+  }
+  // 子任务全部完成后端会自动提交为「待审核」，静默刷新以反映最新状态（不重载页面/不回顶）
+  // 刷新失败只提示，不回滚勾选状态（勾选已成功，服务端为准）
+  try {
+    await loadTasks(true);
+  } catch (err) {
+    logger.error('Failed to refresh tasks after subtask toggle', err as Error);
+    toast.error('已保存，但刷新列表失败');
   } finally {
     const afterToggle = new Set(togglingSubtaskIds.value);
     afterToggle.delete(subtask.id);
@@ -966,13 +976,31 @@ async function handleConfirmSubmit(): Promise<void> {
     }, 2000);
   } catch (err) {
     logger.error('Failed to submit task', err as Error);
+    toast.error('提交失败，请重试');
   } finally {
     submitting.value = false;
   }
 }
 
+let todayTimer: number | null = null;
+
 onMounted(() => {
   void loadTasks();
+  // 跨午夜自动切换"今天"并重新拉取
+  todayTimer = window.setInterval(() => {
+    const next = todayString();
+    if (next !== todayStr.value) {
+      todayStr.value = next;
+      void loadTasks();
+    }
+  }, 60000);
+});
+
+onUnmounted(() => {
+  if (todayTimer != null) {
+    window.clearInterval(todayTimer);
+    todayTimer = null;
+  }
 });
 
 // 顶部切换孩子后需要重新拉取当日任务 / 积分

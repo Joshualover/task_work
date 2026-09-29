@@ -116,6 +116,52 @@ export class RedemptionService {
     };
   }
 
+  /**
+   * 兑奖频率与额度校验（每天/每周/每月 次数与积分上限）。
+   * executor 传入 this.db 或事务 tx：事务外做快速失败，事务内必须复检（防并发 TOCTOU）。
+   */
+  private async assertLimitNotExceeded(
+    executor: PostgresJsDatabase,
+    childId: string,
+    rw: typeof reward.$inferSelect,
+  ): Promise<void> {
+    const frequency = rw.frequency ?? 'unlimited';
+    if (frequency === 'unlimited') return;
+
+    const range = periodRangeUtc(
+      frequency as 'daily' | 'weekly' | 'monthly',
+    );
+    const used = await executor
+      .select({ pointsCost: redemption.pointsCost })
+      .from(redemption)
+      .where(
+        and(
+          eq(redemption.childId, childId),
+          eq(redemption.rewardId, rw.id),
+          inArray(redemption.status, ['pending', 'approved']),
+          gte(redemption.createdAt, range.start),
+          lt(redemption.createdAt, range.end),
+        ),
+      );
+    const periodLabel =
+      frequency === 'daily' ? '每天' : frequency === 'weekly' ? '每周' : '每月';
+
+    if (rw.limitCount != null && used.length + 1 > rw.limitCount) {
+      throw new ConflictException(
+        `${periodLabel}最多兑换 ${rw.limitCount} 次「${rw.name}」，本期已兑换 ${used.length} 次`,
+      );
+    }
+    const usedPoints = used.reduce((sum, r) => sum + r.pointsCost, 0);
+    if (
+      rw.limitPoints != null &&
+      usedPoints + rw.pointsRequired > rw.limitPoints
+    ) {
+      throw new ConflictException(
+        `${periodLabel}「${rw.name}」最多消耗 ${rw.limitPoints} 积分，本期已消耗 ${usedPoints} 积分`,
+      );
+    }
+  }
+
   async createRedemption(
     childId: string,
     rewardId: string,
@@ -146,46 +192,25 @@ export class RedemptionService {
       throw new BadRequestException('奖励已下架');
     }
 
-    // 兑奖频率与额度校验（每天/每周/每月 次数与积分上限）
-    const frequency = rw.frequency ?? 'unlimited';
-    if (frequency !== 'unlimited') {
-      const range = periodRangeUtc(
-        frequency as 'daily' | 'weekly' | 'monthly',
-      );
-      const used = await this.db
-        .select({ pointsCost: redemption.pointsCost })
-        .from(redemption)
-        .where(
-          and(
-            eq(redemption.childId, childId),
-            eq(redemption.rewardId, rewardId),
-            inArray(redemption.status, ['pending', 'approved']),
-            gte(redemption.createdAt, range.start),
-            lt(redemption.createdAt, range.end),
-          ),
-        );
-      const periodLabel =
-        frequency === 'daily' ? '每天' : frequency === 'weekly' ? '每周' : '每月';
-
-      if (rw.limitCount != null && used.length + 1 > rw.limitCount) {
-        throw new ConflictException(
-          `${periodLabel}最多兑换 ${rw.limitCount} 次「${rw.name}」，本期已兑换 ${used.length} 次`,
-        );
-      }
-      const usedPoints = used.reduce((sum, r) => sum + r.pointsCost, 0);
-      if (
-        rw.limitPoints != null &&
-        usedPoints + rw.pointsRequired > rw.limitPoints
-      ) {
-        throw new ConflictException(
-          `${periodLabel}「${rw.name}」最多消耗 ${rw.limitPoints} 积分，本期已消耗 ${usedPoints} 积分`,
-        );
-      }
-    }
+    // 事务外快速失败（仅优化体验），事务内会复检
+    await this.assertLimitNotExceeded(this.db, childId, rw);
 
     // 使用事务：原子扣减积分 + 创建兑换记录 + 写入流水
     const result = await this.db.transaction(async (tx) => {
-      // 原子扣减并校验余额充足
+      // 1. 锁定孩子行：串行化同一孩子的并发兑换，配合下方限额复检消除 TOCTOU
+      const childRows = await tx
+        .select({ id: child.id })
+        .from(child)
+        .where(eq(child.id, childId))
+        .for('update');
+      if (childRows.length === 0) {
+        throw new NotFoundException('孩子不存在');
+      }
+
+      // 2. 事务内复检限额（并发申请在拿到行锁后能看到彼此已提交的记录）
+      await this.assertLimitNotExceeded(tx, childId, rw);
+
+      // 3. 原子扣减并校验余额充足
       const childUpdated = await tx
         .update(child)
         .set({ points: sql<number>`${child.points} - ${rw.pointsRequired}` })
@@ -193,16 +218,6 @@ export class RedemptionService {
         .returning({ points: child.points });
 
       if (childUpdated.length === 0) {
-        // 区分孩子不存在 vs 余额不足
-        const childExists = await tx
-          .select({ id: child.id })
-          .from(child)
-          .where(eq(child.id, childId))
-          .limit(1);
-
-        if (childExists.length === 0) {
-          throw new NotFoundException('孩子不存在');
-        }
         throw new ConflictException('积分不足，无法兑换');
       }
 

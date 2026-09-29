@@ -1,5 +1,5 @@
 /**
- * 报表数据校验：确认图表拿到的 weeklyTrend 数字与真实完成情况一致。
+ * 报表数据校验：确认图表拿到的 trend 数字与真实完成情况一致。
  * 用法：bash scripts/dev-local.sh start 之后 node scripts/test-report-stats.mjs
  */
 const BASE = 'http://localhost:8080';
@@ -52,15 +52,22 @@ function makeClient(label) {
   console.log('\n【无数据时】');
   const empty = await parent('GET', `/api/report/stats?childId=${childId}`);
   ok(empty.status < 400, `接口可用 ${empty.status}`);
-  ok(empty.json.weeklyTrend?.length === 4, `返回近 4 周（实际 ${empty.json.weeklyTrend?.length}）`);
+  ok(empty.json.trend?.length === 7, `默认近一周 = 7 天（实际 ${empty.json.trend?.length}）`);
   ok(
-    empty.json.weeklyTrend.every((t) => t.points === 0 && t.completionRate === 0),
+    empty.json.trend.every((t) => t.points === 0 && t.completionRate === 0),
     '无任务时全为 0（前端会显示引导文案而不是白图）',
   );
-  const weeksAscending = empty.json.weeklyTrend.every(
-    (t, i, arr) => i === 0 || arr[i - 1].week < t.week,
+  const daysAscending = empty.json.trend.every(
+    (t, i, arr) => i === 0 || arr[i - 1].date < t.date,
   );
-  ok(weeksAscending, '周数据按时间升序（图表从左到右）');
+  ok(daysAscending, '日期升序（图表从左到右）');
+  ok(empty.json.trend[empty.json.trend.length - 1].date === today(), '最后一天就是今天');
+
+  console.log('\n【range=month】');
+  const month = await parent('GET', `/api/report/stats?childId=${childId}&range=month`);
+  ok(month.json.trend?.length === 30, `近一月 = 30 天（实际 ${month.json.trend?.length}）`);
+  const badRange = await parent('GET', `/api/report/stats?childId=${childId}&range=nonsense`);
+  ok(badRange.json.trend?.length === 7, '非法 range 回退为 week（不报错）');
 
   console.log('\n【有数据时】');
   const mk = async (name, points) =>
@@ -73,12 +80,12 @@ function makeClient(label) {
 
   const stats = (await parent('GET', `/api/report/stats?childId=${childId}`)).json;
   ok(stats.totalPointsEarned === 15, `累计积分 15（实际 ${stats.totalPointsEarned}）`);
-  const thisWeek = stats.weeklyTrend[stats.weeklyTrend.length - 1];
-  ok(thisWeek.points === 15, `本周积分 15（实际 ${thisWeek.points}）`);
-  ok(thisWeek.completionRate === 1, `本周完成率 100%（实际 ${Math.round(thisWeek.completionRate * 100)}%）`);
-  ok(stats.weeklyTrend[0].points === 0, '上周及更早仍为 0');
+  const todayRow = stats.trend[stats.trend.length - 1];
+  ok(todayRow.date === today() && todayRow.points === 15, `今天积分 15（实际 ${todayRow.points}）`);
+  ok(todayRow.completionRate === 1, `今天完成率 100%（实际 ${Math.round(todayRow.completionRate * 100)}%）`);
+  ok(stats.trend.slice(0, -1).every((t) => t.points === 0), '更早的日期仍为 0');
   ok(
-    Math.max(...stats.weeklyTrend.map((t) => t.points)) === 15,
+    Math.max(...stats.trend.map((t) => t.points)) === 15,
     '柱状图最大值取自真实数据（用于纵轴缩放）',
   );
 

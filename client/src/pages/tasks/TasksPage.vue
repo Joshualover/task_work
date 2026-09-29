@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, watch, nextTick } from 'vue';
+import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { logger } from '@lark-apaas/client-toolkit/logger';
 import {
   Plus, Clock, CheckCircle, XCircle, AlertCircle, BookOpen, Star,
@@ -20,6 +20,7 @@ import { useChildStore } from '@/stores/child';
 import { todayString } from '@/utils/date';
 import { taskCardStyle } from '@/utils/subject-image';
 import { snapshotScroll } from '@/utils/scroll';
+import { createLatestGuard } from '@/utils/request-guard';
 import { toast } from '@/components/ui/toast';
 import { getErrorMessage } from '@/utils/error';
 import type {
@@ -115,8 +116,13 @@ const selectedSuggestionIds = ref<string[]>([]);
 const aiConfirming = ref<boolean>(false);
 
 // Image upload
-const uploadedImages = ref<File[]>([]);
-const imagePreviews = ref<string[]>([]);
+// 单一数据源：文件与预览图成对存储，避免并行数组在压缩失败时索引错位
+interface UploadedImage {
+  file: File;
+  preview: string;
+}
+const uploadedImages = ref<UploadedImage[]>([]);
+const imagePreviews = computed<string[]>(() => uploadedImages.value.map((img) => img.preview));
 
 // Task card expansion state (for subtasks)
 const expandedTaskIds = ref<Set<string>>(new Set());
@@ -167,7 +173,9 @@ const getCompletedSubtaskCount = (task: TaskInstance): number => {
   return getTaskSubtasks(task).filter((st: HomeworkSubtask) => st.isCompleted).length;
 };
 
-const today = computed<string>(() => todayString());
+// 每分钟刷新的"今天"：跨午夜后 ref 变化会触发下方 watch 重新拉取任务
+const today = ref<string>(todayString());
+let todayTimer: number | null = null;
 
 /** 目标型任务进度百分比 */
 const goalPercent = (task: TaskInstance): string => {
@@ -217,19 +225,24 @@ function applyWeekendExtend(): void {
   formData.extendDays = 2;
 }
 
+// 竞态守卫：快速切换孩子时丢弃慢的旧响应
+const fetchTasksGuard = createLatestGuard();
+
 const fetchTasks = async (silent = false): Promise<void> => {
   if (!currentChildId.value) return;
+  const isLatest = fetchTasksGuard();
   if (!silent) loading.value = true;
   try {
     const result = await taskApi.listTasks({
       childId: currentChildId.value,
       date: today.value,
     });
+    if (!isLatest()) return;
     tasks.value = result.items;
   } catch (error) {
     logger.error('获取任务列表失败', error);
   } finally {
-    if (!silent) loading.value = false;
+    if (!silent && isLatest()) loading.value = false;
   }
 };
 /**
@@ -246,6 +259,18 @@ const refreshKeepScroll = async (): Promise<void> => {
 onMounted(() => {
   formData.taskDate = today.value;
   void fetchTasks();
+  // 跨午夜自动切换"今天"并触发 watch 重新拉取
+  todayTimer = window.setInterval(() => {
+    const next = todayString();
+    if (next !== today.value) today.value = next;
+  }, 60000);
+});
+
+onUnmounted(() => {
+  if (todayTimer != null) {
+    window.clearInterval(todayTimer);
+    todayTimer = null;
+  }
 });
 
 watch([currentChildId, today], () => {
@@ -309,7 +334,12 @@ const groupedTasks = computed<Record<TaskStatus, TaskInstance[]>>(() => {
 
 // 勾选 / 取消子任务；全部完成后后端会自动提交为「待审核」，需家长审批
 const handleToggleSubtask = async (task: TaskInstance, subtask: HomeworkSubtask): Promise<void> => {
-  if (!task.suggestionId || !currentChildId.value) return;
+  if (!currentChildId.value) return;
+  if (!task.suggestionId) {
+    // 手动创建的任务没有 AI 建议关联，无法逐项勾选，明确告知而非静默失败
+    toast.info('该任务不支持逐项打卡，请直接提交完成');
+    return;
+  }
   if (togglingSubtaskIds.value.has(subtask.id)) return;
   const next = new Set(togglingSubtaskIds.value);
   next.add(subtask.id);
@@ -596,7 +626,14 @@ const handleBatchApprove = async (): Promise<void> => {
   }
 };
 
+// 防重复提交：正在提交中的任务 id 集合
+const submittingTaskIds = ref<Set<string>>(new Set());
+
 const handleSubmitTask = async (taskId: string): Promise<void> => {
+  if (submittingTaskIds.value.has(taskId)) return;
+  const next = new Set(submittingTaskIds.value);
+  next.add(taskId);
+  submittingTaskIds.value = next;
   try {
     await taskApi.submitTask(taskId, {});
     toast.success('已提交');
@@ -604,8 +641,15 @@ const handleSubmitTask = async (taskId: string): Promise<void> => {
   } catch (error) {
     logger.error('提交任务失败', error);
     toast.error('提交失败，请重试');
+  } finally {
+    const after = new Set(submittingTaskIds.value);
+    after.delete(taskId);
+    submittingTaskIds.value = after;
   }
 };
+
+const isSubmittingTask = (taskId: string): boolean =>
+  submittingTaskIds.value.has(taskId);
 
 const handleGenerateDaily = async (): Promise<void> => {
   if (!currentChildId.value) return;
@@ -642,7 +686,6 @@ const openAiDialog = (): void => {
   aiSuggestions.value = [];
   selectedSuggestionIds.value = [];
   uploadedImages.value = [];
-  imagePreviews.value = [];
   expandedSuggestionIds.value.clear();
 };
 
@@ -777,9 +820,10 @@ const compressImage = (file: File, maxSize = 1280, quality = 0.82): Promise<stri
 
 async function processImageFiles(files: File[]): Promise<void> {
   for (const file of files) {
-    uploadedImages.value.push(file);
     try {
-      imagePreviews.value.push(await compressImage(file));
+      const preview = await compressImage(file);
+      // 压缩成功后才写入，file 与 preview 永远成对，不会出现索引错位
+      uploadedImages.value.push({ file, preview });
     } catch (err) {
       logger.error('图片处理失败', err as Error);
       toast.error('图片处理失败，请重试');
@@ -797,8 +841,8 @@ const handleImageSelect = (e: Event): void => {
 };
 
 const removeImage = (index: number): void => {
+  // 单一数据源，删除即同时移除文件与预览
   uploadedImages.value.splice(index, 1);
-  imagePreviews.value.splice(index, 1);
 };
 </script>
 
@@ -1054,11 +1098,12 @@ const removeImage = (index: number): void => {
             <div class="mt-4 flex gap-2 border-t border-gray-100 pt-3">
               <Button
                 size="sm"
+                :disabled="isSubmittingTask(task.id)"
                 @click="void handleSubmitTask(task.id)"
-                class="flex-1 rounded-full bg-[#52C41A] hover:bg-[#45B018] text-white"
+                class="flex-1 rounded-full bg-[#52C41A] hover:bg-[#45B018] text-white disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <CheckCircle class="h-4 w-4" />
-                提交完成
+                {{ isSubmittingTask(task.id) ? '提交中...' : '提交完成' }}
               </Button>
             </div>
           </div>

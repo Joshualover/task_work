@@ -11,6 +11,14 @@ import {
 } from '@nestjs/common';
 import { NeedLogin } from '@lark-apaas/fullstack-nestjs-core';
 import type { Request } from 'express';
+import {
+  IsUUID,
+  IsBoolean,
+  IsOptional,
+  IsString,
+  IsInt,
+  MaxLength,
+} from 'class-validator';
 
 import { AllowanceService } from './allowance.service';
 import { FamilyService } from '../family/family.service';
@@ -19,25 +27,42 @@ import type {
   AllowanceTransactionType,
   AllowanceRequestListResponse,
   AllowanceRequestStatus,
-  CreateAllowanceRequest,
-  ReviewAllowanceRequest,
-  AdjustAllowanceRequest,
 } from '@shared/api.interface';
 
-class CreateAllowanceRequestBody implements CreateAllowanceRequest {
+class CreateAllowanceRequestBody {
+  @IsUUID()
   childId!: string;
+
+  /** 单位：分 */
+  @IsInt()
   amount!: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
   purpose?: string;
 }
 
-class ReviewAllowanceRequestBody implements ReviewAllowanceRequest {
+class ReviewAllowanceRequestBody {
+  @IsBoolean()
   approved!: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
   reviewNote?: string;
 }
 
-class AdjustAllowanceRequestBody implements AdjustAllowanceRequest {
+class AdjustAllowanceRequestBody {
+  @IsUUID()
   childId!: string;
+
+  /** 单位：分，正负皆可 */
+  @IsInt()
   changeAmount!: number;
+
+  @IsString()
+  @MaxLength(100)
   reason!: string;
 }
 
@@ -197,11 +222,14 @@ export class AllowanceController {
     if (body.approved === undefined || body.approved === null) {
       throw new BadRequestException('approved 不能为空');
     }
+    // 安全：校验申请属于当前操作者的家庭（防 IDOR）
+    const family = await this.familyService.getOrCreateFamily(userId);
     const r = await this.allowanceService.reviewRequest(
       requestId,
       body.approved,
       body.reviewNote,
       userId,
+      family.id,
     );
     return {
       id: r.id,

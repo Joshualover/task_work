@@ -14,41 +14,122 @@ import {
 } from '@nestjs/common';
 import { NeedLogin } from '@lark-apaas/fullstack-nestjs-core';
 import type { Request } from 'express';
+import {
+  IsBoolean,
+  IsEnum,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  Length,
+  MaxLength,
+} from 'class-validator';
 import { RewardService, type RewardRow } from './reward.service';
 import { FamilyService } from '../family/family.service';
 
 import type {
   RewardListResponse,
-  CreateRewardRequest,
-  UpdateRewardRequest,
   RewardFrequency,
   RewardUsageResponse,
 } from '@shared/api.interface';
 
-class CreateRewardBody implements CreateRewardRequest {
+/** class-validator @IsEnum 需要"枚举对象"，shared 的 RewardFrequency 是字符串联合类型 */
+const REWARD_FREQUENCY_ENUM = {
+  unlimited: 'unlimited',
+  daily: 'daily',
+  weekly: 'weekly',
+  monthly: 'monthly',
+} as const;
+
+class CreateRewardBody {
+  @IsString()
+  @Length(1, 50)
   name!: string;
+
+  @IsInt()
   pointsRequired!: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
   description?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
   imageUrl?: string;
+
+  @IsOptional()
+  @IsInt()
   sortOrder?: number;
+
+  @IsOptional()
+  @IsEnum(REWARD_FREQUENCY_ENUM)
   frequency?: RewardFrequency;
+
+  @IsOptional()
+  @IsInt()
   limitCount?: number | null;
+
+  @IsOptional()
+  @IsInt()
   limitPoints?: number | null;
+
+  @IsOptional()
+  @IsIn(['item', 'allowance'])
   rewardType?: 'item' | 'allowance';
+
+  @IsOptional()
+  @IsInt()
   allowanceAmount?: number | null;
 }
 
-class UpdateRewardBody implements UpdateRewardRequest {
+class UpdateRewardBody {
+  @IsOptional()
+  @IsString()
+  @Length(1, 50)
   name?: string;
+
+  @IsOptional()
+  @IsInt()
   pointsRequired?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
   description?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
   imageUrl?: string;
+
+  @IsOptional()
+  @IsBoolean()
   isActive?: boolean;
+
+  @IsOptional()
+  @IsInt()
   sortOrder?: number;
+
+  @IsOptional()
+  @IsEnum(REWARD_FREQUENCY_ENUM)
   frequency?: RewardFrequency;
+
+  @IsOptional()
+  @IsInt()
   limitCount?: number | null;
+
+  @IsOptional()
+  @IsInt()
   limitPoints?: number | null;
+
+  @IsOptional()
+  @IsIn(['item', 'allowance'])
   rewardType?: 'item' | 'allowance';
+
+  @IsOptional()
+  @IsInt()
   allowanceAmount?: number | null;
 }
 

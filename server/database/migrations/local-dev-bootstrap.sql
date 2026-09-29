@@ -320,3 +320,16 @@ CREATE TABLE IF NOT EXISTS notification (
 );
 CREATE INDEX IF NOT EXISTS idx_notification_family_id ON notification (family_id);
 CREATE INDEX IF NOT EXISTS idx_notification_is_read ON notification (is_read);
+
+-- ============ 2026-09-29：余额非负约束 + 高频查询索引（与增量迁移保持一致）============
+ALTER TABLE child DROP CONSTRAINT IF EXISTS chk_child_points_non_negative;
+ALTER TABLE child ADD CONSTRAINT chk_child_points_non_negative CHECK (points >= 0);
+ALTER TABLE child DROP CONSTRAINT IF EXISTS chk_child_allowance_balance_non_negative;
+ALTER TABLE child ADD CONSTRAINT chk_child_allowance_balance_non_negative CHECK (allowance_balance >= 0);
+
+CREATE INDEX IF NOT EXISTS idx_point_transaction_child_created ON point_transaction (child_id, _created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_point_transaction_related ON point_transaction (related_id) WHERE related_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_allowance_transaction_child_created ON allowance_transaction (child_id, _created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_allowance_request_child ON allowance_request (child_id, _created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_redemption_child_reward_created ON redemption (child_id, reward_id, _created_at);
+CREATE INDEX IF NOT EXISTS idx_task_instance_child_date ON task_instance (child_id, task_date);

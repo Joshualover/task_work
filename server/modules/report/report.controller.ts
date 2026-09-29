@@ -11,7 +11,7 @@ import type { Request } from 'express';
 
 import { ReportService } from './report.service';
 import { FamilyService } from '../family/family.service';
-import type { ReportStatsResponse } from '@shared/api.interface';
+import type { ReportRange, ReportStatsResponse } from '@shared/api.interface';
 
 @Controller('api/report')
 export class ReportController {
@@ -25,12 +25,14 @@ export class ReportController {
   async getStats(
     @Req() req: Request,
     @Query('childId', new ParseUUIDPipe()) childId: string,
+    @Query('range') range?: string,
   ): Promise<ReportStatsResponse> {
     if (!childId) {
       throw new BadRequestException('childId 不能为空');
     }
+    const reportRange: ReportRange = range === 'month' ? 'month' : 'week';
     const { userId } = req.userContext;
     const family = await this.familyService.getOrCreateFamily(userId);
-    return this.reportService.getStats(childId, family.id);
+    return this.reportService.getStats(childId, family.id, reportRange);
   }
 }

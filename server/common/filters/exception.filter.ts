@@ -60,14 +60,17 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         },
       };
     } else {
-      // 未知异常
+      // 未知异常：堆栈只写日志，不返回给客户端（避免泄露内部实现信息）
+      const err = exception as Error;
+      const traceId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+      // eslint-disable-next-line no-console
+      console.error(`[UncaughtException][trace=${traceId}]`, err?.stack ?? exception, err?.cause ?? '');
       httpStatus = HttpStatus.INTERNAL_SERVER_ERROR;
       errorResponse = {
         error: {
           code: ResponseCode.INTERNAL_ERROR,
           message: '服务器内部错误',
-          stack: (exception as Error).stack,
-          cause: (exception as Error).cause as string,
+          details: `trace=${traceId}`,
           timestamp: Date.now(),
         },
       };

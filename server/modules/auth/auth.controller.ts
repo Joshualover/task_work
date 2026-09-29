@@ -10,40 +10,101 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { IsOptional, IsString, Length, IsIn } from 'class-validator';
 
 import { AuthService } from './auth.service';
 import { SESSION_COOKIE, type SessionPayload } from '@server/common/utils/session';
 
 class RegisterDto {
+  @IsOptional()
+  @IsString()
+  @Length(2, 20)
   username?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(6, 64)
   password?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 30)
   displayName?: string;
+
+  @IsOptional()
+  @IsIn(['parent', 'child'])
   role?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 32)
   inviteCode?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 30)
   familyName?: string;
 }
 
 class LoginDto {
+  @IsOptional()
+  @IsString()
+  @Length(1, 64)
   username?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 64)
   password?: string;
 }
 
 class ChangePasswordDto {
+  @IsOptional()
+  @IsString()
+  @Length(0, 64)
   oldPassword?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(6, 64)
   newPassword?: string;
 }
 
 class ChildAccountDto {
+  @IsOptional()
+  @IsString()
   childId?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(2, 20)
   username?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(6, 64)
   password?: string;
 }
 
 class ParentAccountDto {
   /** 传入则为重置该家长账号，否则新建 */
+  @IsOptional()
+  @IsString()
   userId?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(2, 20)
   username?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(6, 64)
   password?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 30)
   displayName?: string;
 }
 

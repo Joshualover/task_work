@@ -169,6 +169,7 @@ import Button from '@/components/ui/Button.vue';
 import { taskApi } from '@/api';
 import { useChildStore } from '@/stores/child';
 import { todayString } from '@/utils/date';
+import { createLatestGuard } from '@/utils/request-guard';
 import type { TaskInstance, TaskStatus } from '@shared/api.interface';
 
 const props = withDefaults(
@@ -191,6 +192,8 @@ const childStore = useChildStore();
 const currentChild = computed(() => childStore.currentChild);
 const childId = computed(() => currentChild.value?.id ?? '');
 
+// "今天"在组件创建时固化即可（日历页通常短挂载），但 goToday 必须用实时时间，
+// 否则长期挂着的页面会回到错误的月份
 const today = todayString();
 const now = new Date();
 const year = ref(now.getFullYear());
@@ -272,8 +275,12 @@ function cellClass(day: number): string {
   return 'text-[#1F2329] hover:bg-orange-50';
 }
 
+// 竞态守卫：快速切换月份/孩子时丢弃慢的旧响应
+const fetchMonthGuard = createLatestGuard();
+
 async function fetchMonth(): Promise<void> {
   if (!childId.value) return;
+  const isLatest = fetchMonthGuard();
   loading.value = true;
   try {
     const startDate = `${year.value}-${pad(month.value + 1)}-01`;
@@ -287,11 +294,12 @@ async function fetchMonth(): Promise<void> {
     for (const t of result.items) {
       (map[t.taskDate] ??= []).push(t);
     }
+    if (!isLatest()) return;
     tasksByDate.value = map;
   } catch (error) {
     logger.error('获取任务记录失败', error);
   } finally {
-    loading.value = false;
+    if (isLatest()) loading.value = false;
   }
 }
 
@@ -303,9 +311,11 @@ function changeMonth(delta: number): void {
 }
 
 function goToday(): void {
-  year.value = now.getFullYear();
-  month.value = now.getMonth();
-  selectedDate.value = today;
+  // 使用实时时间，避免组件创建时刻固化的 now 导致"回到今天"失效
+  const current = new Date();
+  year.value = current.getFullYear();
+  month.value = current.getMonth();
+  selectedDate.value = todayString();
   void fetchMonth();
 }
 

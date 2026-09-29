@@ -162,6 +162,8 @@ import Dialog from '@/components/ui/Dialog.vue';
 import Input from '@/components/ui/Input.vue';
 import { redemptionApi } from '@/api';
 import { useChildStore } from '@/stores/child';
+import { createLatestGuard } from '@/utils/request-guard';
+import { toast } from '@/components/ui/toast';
 import type { Redemption, RedemptionStatus } from '@shared/api.interface';
 
 interface Props {
@@ -188,7 +190,11 @@ const tabs = computed(() => [
   { key: 'rejected' as const, label: '已拒绝', icon: XCircle, color: 'text-[#FF4D4F]' },
 ]);
 
+// 竞态守卫：快速切换 tab/孩子时丢弃慢的旧响应
+const fetchGuard = createLatestGuard();
+
 async function fetchRedemptions(): Promise<void> {
+  const isLatest = fetchGuard();
   loading.value = true;
   try {
     const params: { childId?: string; status?: RedemptionStatus } = {};
@@ -199,11 +205,12 @@ async function fetchRedemptions(): Promise<void> {
       params.status = activeTab.value;
     }
     const result = await redemptionApi.listRedemptions(params);
+    if (!isLatest()) return;
     redemptions.value = result.items;
   } catch (error) {
     logger.error('获取兑换列表失败', error as Error);
   } finally {
-    loading.value = false;
+    if (isLatest()) loading.value = false;
   }
 }
 
@@ -216,6 +223,7 @@ async function handleApprove(redemption: Redemption): Promise<void> {
     await fetchRedemptions();
   } catch (error) {
     logger.error('审核通过失败', error as Error);
+    toast.error('审核操作失败，请重试');
   } finally {
     actionLoading.value = null;
   }
@@ -241,6 +249,7 @@ async function handleReject(): Promise<void> {
     await fetchRedemptions();
   } catch (error) {
     logger.error('审核拒绝失败', error as Error);
+    toast.error('审核操作失败，请重试');
   } finally {
     actionLoading.value = null;
   }

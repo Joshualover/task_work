@@ -11,23 +11,30 @@ import {
 } from '@nestjs/common';
 import { NeedLogin } from '@lark-apaas/fullstack-nestjs-core';
 import type { Request } from 'express';
+import { IsUUID, IsBoolean, IsOptional, IsString, MaxLength } from 'class-validator';
 import { RedemptionService } from './redemption.service';
 import { FamilyService } from '../family/family.service';
 
 import type {
   RedemptionListResponse,
-  CreateRedemptionRequest,
-  ReviewRedemptionRequest,
   RedemptionStatus,
 } from '@shared/api.interface';
 
-class CreateRedemptionBody implements CreateRedemptionRequest {
+class CreateRedemptionBody {
+  @IsUUID()
   rewardId!: string;
+
+  @IsUUID()
   childId!: string;
 }
 
-class ReviewRedemptionBody implements ReviewRedemptionRequest {
+class ReviewRedemptionBody {
+  @IsBoolean()
   approved!: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
   reviewNote?: string;
 }
 

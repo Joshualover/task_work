@@ -69,9 +69,17 @@
             :disabled="childStore.loading || childStore.children.length === 0"
             class="flex max-w-[8rem] items-center gap-1.5 rounded-full bg-orange-50 px-2.5 py-1.5 text-sm font-medium text-[#1F2329] transition-colors hover:bg-orange-100 disabled:cursor-not-allowed disabled:opacity-60 sm:max-w-none sm:gap-2 sm:px-3"
           >
-            <span class="text-lg">
-              {{ childStore.currentChild ? getAvatarDisplay(childStore.currentChild.avatarUrl) : '👤' }}
-            </span>
+            <template v-if="childStore.currentChild">
+              <span v-if="!childStore.currentChild.avatarUrl" class="text-lg">🧒</span>
+              <img
+                v-else
+                :src="childStore.currentChild.avatarUrl"
+                :alt="childStore.currentChild.name"
+                class="h-6 w-6 rounded-full object-cover"
+                referrerpolicy="no-referrer"
+              />
+            </template>
+            <span v-else class="text-lg">👤</span>
             <span class="truncate">
               {{
                 childStore.loading
@@ -104,9 +112,14 @@
                   : 'text-[#1F2329] hover:bg-orange-50/50',
               ]"
             >
-              <span class="text-base">
-                {{ getAvatarDisplay(child.avatarUrl) }}
-              </span>
+              <span v-if="!child.avatarUrl" class="text-base">🧒</span>
+              <img
+                v-else
+                :src="child.avatarUrl"
+                :alt="child.name"
+                class="h-6 w-6 rounded-full object-cover"
+                referrerpolicy="no-referrer"
+              />
               <span class="truncate font-medium">{{ child.name }}</span>
             </button>
           </div>
@@ -563,6 +576,8 @@ async function handleNotificationClick(n: AppNotification): Promise<void> {
     await notificationApi.markRead(n.id);
   } catch (error) {
     logger.error('标记提醒已读失败', error);
+    // 失败不执行乐观更新，保持未读状态，等下次轮询纠正
+    return;
   }
   n.isRead = true;
   unreadCount.value = Math.max(0, unreadCount.value - 1);
@@ -612,7 +627,10 @@ onMounted(() => {
     void childStore.fetchChildren();
     void refreshUnread();
     notifTimer = window.setInterval(() => {
-      void refreshUnread();
+      // 页面在后台标签页时暂停轮询，减少无谓请求
+      if (document.visibilityState === 'visible') {
+        void refreshUnread();
+      }
     }, 30000);
   }
 });
@@ -685,10 +703,5 @@ function handleModeChange(newMode: UserMode): void {
 function handleChildSelect(childId: string): void {
   childStore.setCurrentChildId(childId);
   childDropdownOpen.value = false;
-}
-
-function getAvatarDisplay(avatarUrl: string | null): string {
-  if (avatarUrl) return avatarUrl;
-  return '🧒';
 }
 </script>

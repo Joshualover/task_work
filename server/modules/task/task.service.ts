@@ -586,16 +586,18 @@ export class TaskService {
 
     const target = task.targetValue ?? 0;
     const step = Math.round(Number(delta) || 0);
-    const next = Math.max(0, Math.min(target, (task.currentValue ?? 0) + step));
-    const reached = target > 0 && next >= target;
+
+    // 原子更新：新进度在 SQL 内计算，并发加减进度不会互相覆盖（原实现为读-改-写，会丢失更新）。
+    // 达到目标（target > 0 且新值 >= target）时自动置为「待审核」。
+    const nextValueExpr = sql<number>`GREATEST(0, LEAST(${target}, COALESCE(${taskInstance.currentValue}, 0) + ${step}))`;
+    const reachedExpr = sql<boolean>`${target} > 0 AND ${nextValueExpr} >= ${target}`;
 
     const updated = await this.db
       .update(taskInstance)
       .set({
-        currentValue: next,
-        ...(reached
-          ? { status: 'submitted', submitTime: new Date() }
-          : {}),
+        currentValue: nextValueExpr,
+        status: sql`CASE WHEN ${reachedExpr} THEN 'submitted' ELSE ${taskInstance.status} END`,
+        submitTime: sql`CASE WHEN ${reachedExpr} THEN now() ELSE ${taskInstance.submitTime} END`,
       })
       .where(
         and(
@@ -609,8 +611,10 @@ export class TaskService {
       throw new ConflictException('任务状态已变化，请刷新后重试');
     }
 
+    const reached = updated[0].status === 'submitted';
+
     this.logger.log(
-      `目标任务进度 ${taskId}: ${task.currentValue ?? 0} -> ${next}/${target}${reached ? '（已达成，待审核）' : ''}`,
+      `目标任务进度 ${taskId}: ${task.currentValue ?? 0} -> ${updated[0].currentValue}/${target}${reached ? '（已达成，待审核）' : ''}`,
     );
 
     // 达成目标 -> 提醒家长待确认
@@ -855,26 +859,21 @@ export class TaskService {
           throw new ConflictException('任务状态已变化，无法重复审核');
         }
 
-        // 2. 获取当前积分余额
-        const childRecord = await tx
-          .select({ points: child.points })
-          .from(child)
-          .where(eq(child.id, task.childId));
+        // 2. 原子自增积分余额（与 point.service 的写法保持一致），
+        //    避免并发审核时"读-改-写"互相覆盖导致积分丢失；RETURNING 取真实余额
+        const childUpdated = await tx
+          .update(child)
+          .set({ points: sql`${child.points} + ${calculatedFinalPoints}` })
+          .where(eq(child.id, task.childId))
+          .returning({ points: child.points });
 
-        if (childRecord.length === 0) {
+        if (childUpdated.length === 0) {
           throw new NotFoundException('孩子不存在');
         }
 
-        const currentBalance = childRecord[0].points;
-        const newBalance = currentBalance + calculatedFinalPoints;
+        const newBalance = childUpdated[0].points;
 
-        // 3. 更新孩子积分余额
-        await tx
-          .update(child)
-          .set({ points: newBalance })
-          .where(eq(child.id, task.childId));
-
-        // 4. 写入积分流水
+        // 3. 写入积分流水
         await tx.insert(pointTransaction).values({
           childId: task.childId,
           changeAmount: calculatedFinalPoints,

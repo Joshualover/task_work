@@ -17,16 +17,16 @@ const { pointsTrendOption, completionRateOption, trendLabels } = await import(
 );
 
 const withData = [
-  { week: '2026-08-31', points: 0, completionRate: 0 },
-  { week: '2026-09-07', points: 35, completionRate: 0.25 },
-  { week: '2026-09-14', points: 80, completionRate: 0.5 },
-  { week: '2026-09-21', points: 20, completionRate: 0.75 },
+  { date: '2026-08-31', points: 0, completionRate: 0 },
+  { date: '2026-09-07', points: 35, completionRate: 0.25 },
+  { date: '2026-09-14', points: 80, completionRate: 0.5 },
+  { date: '2026-09-21', points: 20, completionRate: 0.75 },
 ];
 const emptyData = [
-  { week: '2026-08-31', points: 0, completionRate: 0 },
-  { week: '2026-09-07', points: 0, completionRate: 0 },
-  { week: '2026-09-14', points: 0, completionRate: 0 },
-  { week: '2026-09-21', points: 0, completionRate: 0 },
+  { date: '2026-08-31', points: 0, completionRate: 0 },
+  { date: '2026-09-07', points: 0, completionRate: 0 },
+  { date: '2026-09-14', points: 0, completionRate: 0 },
+  { date: '2026-09-21', points: 0, completionRate: 0 },
 ];
 
 function renderSVG(option) {

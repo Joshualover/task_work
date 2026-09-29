@@ -2,15 +2,7 @@ import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
 import { sql, eq } from 'drizzle-orm';
 import { taskInstance, pointTransaction, redemption, child } from '@server/database/schema';
-import type { ReportStatsResponse } from '@shared/api.interface';
-
-interface WeeklyRow {
-  weekStart: string;
-  points: number;
-  completed: number;
-  totalFinal: number;
-  completionRate: number;
-}
+import type { ReportRange, ReportStatsResponse } from '@shared/api.interface';
 
 @Injectable()
 export class ReportService {
@@ -20,7 +12,7 @@ export class ReportService {
     @Inject(DRIZZLE_DATABASE) private readonly db: PostgresJsDatabase,
   ) {}
 
-  async getStats(childId: string, familyId: string): Promise<ReportStatsResponse> {
+  async getStats(childId: string, familyId: string, range: ReportRange = 'week'): Promise<ReportStatsResponse> {
     // 校验孩子归属，避免跨家庭读取报表
     const childRows = await this.db
       .select({ familyId: child.familyId })
@@ -94,89 +86,84 @@ export class ReportService {
     `);
     const totalRedemptions = Number(redemptionRows[0]?.count ?? 0);
 
-    // 5. Weekly trend for last 4 weeks (including current partial week)
-    //    weekStart (Monday), points earned that week, task completion rate that week
-    const oldestWeekStart = weekStarts[weekStarts.length - 1];
-    // thisWeekEnd = this Monday + 7 days = next Monday (exclusive end)
-    const thisWeekEndDate = new Date(`${weekStarts[0]}T00:00:00Z`);
-    thisWeekEndDate.setUTCDate(thisWeekEndDate.getUTCDate() + 7);
-    const thisWeekEnd = this.toDateString(thisWeekEndDate);
+    // 5. Daily trend for the selected range (week = 近7天, month = 近30天)
+    //    按「上海自然日」聚合：每天获得积分 + 每天任务完成率
+    const days = range === 'month' ? 30 : 7;
+    const trendDates = this.getRecentDates(shanghaiNow, days); // oldest -> newest
+    const oldestDate = trendDates[0];
+    const newestDate = trendDates[trendDates.length - 1];
 
-    const weeklyTasksRows = await this.db.execute(sql<{ week_start: string; completed: string; total_final: string }>`
+    const dailyTasksRows = await this.db.execute(sql<{ day: string; completed: string; total_final: string }>`
       SELECT
-        to_char(date_trunc('week', ${taskInstance.taskDate}::timestamp)::date, 'YYYY-MM-DD') AS week_start,
+        to_char(${taskInstance.taskDate}, 'YYYY-MM-DD') AS day,
         count(*) FILTER (WHERE ${taskInstance.status} = 'completed')::bigint AS completed,
         count(*) FILTER (WHERE ${taskInstance.status} IN ('completed', 'overdue', 'rejected'))::bigint AS total_final
       FROM ${taskInstance}
       WHERE ${taskInstance.childId} = ${childId}::uuid
-        AND ${taskInstance.taskDate} >= ${oldestWeekStart}::date
-        AND ${taskInstance.taskDate} < ${thisWeekEnd}::date
-      GROUP BY date_trunc('week', ${taskInstance.taskDate}::timestamp)::date
-      ORDER BY week_start DESC
+        AND ${taskInstance.taskDate} >= ${oldestDate}::date
+        AND ${taskInstance.taskDate} <= ${newestDate}::date
+      GROUP BY day
+      ORDER BY day
     `);
 
-    const weeklyPointsRows = await this.db.execute(sql<{ week_start: string; points: string }>`
+    const dailyPointsRows = await this.db.execute(sql<{ day: string; points: string }>`
       SELECT
-        to_char(date_trunc('week', ${pointTransaction.createdAt})::date, 'YYYY-MM-DD') AS week_start,
+        to_char((${pointTransaction.createdAt} AT TIME ZONE 'Asia/Shanghai')::date, 'YYYY-MM-DD') AS day,
         COALESCE(SUM(${pointTransaction.changeAmount}), 0)::bigint AS points
       FROM ${pointTransaction}
       WHERE ${pointTransaction.childId} = ${childId}::uuid
         AND ${pointTransaction.type} = 'earn'
-        AND ${pointTransaction.createdAt} >= ${oldestWeekStart}::date
-        AND ${pointTransaction.createdAt} < ${thisWeekEnd}::date
-      GROUP BY date_trunc('week', ${pointTransaction.createdAt})::date
-      ORDER BY week_start DESC
+        AND (${pointTransaction.createdAt} AT TIME ZONE 'Asia/Shanghai')::date >= ${oldestDate}::date
+        AND (${pointTransaction.createdAt} AT TIME ZONE 'Asia/Shanghai')::date <= ${newestDate}::date
+      GROUP BY day
+      ORDER BY day
     `);
 
-    interface WeeklyTaskRow {
-      week_start: string;
-      completed: string;
-      total_final: string;
-    }
-    interface WeeklyPointsRow {
-      week_start: string;
-      points: string;
-    }
-
-    const taskMap = new Map<string, { completed: number; totalFinal: number }>();
-    for (const row of weeklyTasksRows as unknown as WeeklyTaskRow[]) {
-      taskMap.set(row.week_start, {
+    const dailyTaskMap = new Map<string, { completed: number; totalFinal: number }>();
+    for (const row of dailyTasksRows as unknown as Array<{ day: string; completed: string; total_final: string }>) {
+      dailyTaskMap.set(row.day, {
         completed: Number(row.completed),
         totalFinal: Number(row.total_final),
       });
     }
-    const pointsMap = new Map<string, number>();
-    for (const row of weeklyPointsRows as unknown as WeeklyPointsRow[]) {
-      pointsMap.set(row.week_start, Number(row.points));
+    const dailyPointsMap = new Map<string, number>();
+    for (const row of dailyPointsRows as unknown as Array<{ day: string; points: string }>) {
+      dailyPointsMap.set(row.day, Number(row.points));
     }
 
-    // weekStarts is ordered from latest (this week) to oldest (3 weeks ago)
-    const weeklyTrend: WeeklyRow[] = weekStarts.map((weekStart: string) => {
-      const taskData = taskMap.get(weekStart) ?? { completed: 0, totalFinal: 0 };
-      const points = pointsMap.get(weekStart) ?? 0;
-      const completionRate = taskData.totalFinal > 0 ? taskData.completed / taskData.totalFinal : 0;
+    const trend = trendDates.map((date) => {
+      const taskData = dailyTaskMap.get(date);
+      const totalFinal = taskData?.totalFinal ?? 0;
+      const completed = taskData?.completed ?? 0;
       return {
-        weekStart,
-        points,
-        completed: taskData.completed,
-        totalFinal: taskData.totalFinal,
-        completionRate,
+        date,
+        points: dailyPointsMap.get(date) ?? 0,
+        completionRate: totalFinal > 0 ? completed / totalFinal : 0,
       };
     });
 
-    this.logger.log(`Report stats loaded for child ${childId}`);
+    this.logger.log(`Report stats loaded for child ${childId} (range=${range})`);
 
     return {
       lastWeekCompletedTasks,
       dailyTaskCompletionRate,
       totalPointsEarned,
       totalRedemptions,
-      weeklyTrend: [...weeklyTrend].reverse().map((item) => ({
-        week: item.weekStart,
-        points: item.points,
-        completionRate: item.completionRate,
-      })),
+      trend,
     };
+  }
+
+  /**
+   * 返回最近 N 个「上海自然日」的日期串（oldest -> newest）
+   */
+  private getRecentDates(shanghaiNow: Date, days: number): string[] {
+    const dates: string[] = [];
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(shanghaiNow);
+      d.setUTCDate(d.getUTCDate() - i);
+      dates.push(this.toDateString(d));
+    }
+    return dates;
   }
 
   /**

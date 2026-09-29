@@ -9,6 +9,8 @@ import Dialog from '@/components/ui/Dialog.vue';
 import Input from '@/components/ui/Input.vue';
 import { pointApi } from '@/api';
 import { useChildStore } from '@/stores/child';
+import { createLatestGuard } from '@/utils/request-guard';
+import { toast } from '@/components/ui/toast';
 import type { PointTransaction } from '@shared/api.interface';
 
 const props = withDefaults(defineProps<{
@@ -33,10 +35,16 @@ const adjustAmount = ref<string>('');
 const adjustReason = ref<string>('');
 const submitting = ref<boolean>(false);
 
+// 竞态守卫：快速切换孩子/翻页时丢弃慢的旧响应
+const balanceGuard = createLatestGuard();
+const txGuard = createLatestGuard();
+
 const fetchBalance = async () => {
   if (!childId.value) return;
+  const isLatest = balanceGuard();
   try {
     const result = await pointApi.getBalance(childId.value);
+    if (!isLatest()) return;
     balance.value = result.balance;
   } catch (error) {
     logger.error('获取积分余额失败', error);
@@ -45,6 +53,7 @@ const fetchBalance = async () => {
 
 const fetchTransactions = async () => {
   if (!childId.value) return;
+  const isLatest = txGuard();
   loading.value = true;
   try {
     const result = await pointApi.listTransactions({
@@ -52,12 +61,13 @@ const fetchTransactions = async () => {
       page: page.value,
       pageSize: pageSize.value,
     });
+    if (!isLatest()) return;
     transactions.value = result.items;
     total.value = result.total;
   } catch (error) {
     logger.error('获取积分流水失败', error);
   } finally {
-    loading.value = false;
+    if (isLatest()) loading.value = false;
   }
 };
 
@@ -96,6 +106,7 @@ const handleAdjust = async () => {
     await fetchAll();
   } catch (error) {
     logger.error('调整积分失败', error);
+    toast.error('调整积分失败，请重试');
   } finally {
     submitting.value = false;
   }

@@ -559,13 +559,15 @@ export interface ToggleSubtaskRequest {
 }
 
 // 报表
+export type ReportRange = 'week' | 'month';
+
 export interface ReportStatsResponse {
   lastWeekCompletedTasks: number;
   dailyTaskCompletionRate: number;
   totalPointsEarned: number;
   totalRedemptions: number;
-  weeklyTrend: Array<{
-    week: string;
+  trend: Array<{
+    date: string;
     points: number;
     completionRate: number;
   }>;

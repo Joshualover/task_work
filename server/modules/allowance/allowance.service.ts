@@ -66,8 +66,13 @@ export class AllowanceService {
     pageSize: number;
   }> {
     const { childId } = params;
-    const pageNum = Math.max(1, params.page ?? 1);
-    const pageSizeNum = Math.max(1, Math.min(100, params.pageSize ?? 20));
+    // 防御：controller parseInt('abc') 会产生 NaN，这里统一兜底，避免 LIMIT NaN 导致 500
+    const rawPage = params.page ?? 1;
+    const rawPageSize = params.pageSize ?? 20;
+    const pageNum = Number.isFinite(rawPage) ? Math.max(1, Math.trunc(rawPage)) : 1;
+    const pageSizeNum = Number.isFinite(rawPageSize)
+      ? Math.max(1, Math.min(100, Math.trunc(rawPageSize)))
+      : 20;
     const offset = (pageNum - 1) * pageSizeNum;
 
     const [items, totalRows] = await Promise.all([
@@ -193,11 +198,13 @@ export class AllowanceService {
     };
   }
 
-  /** 家长审批：通过则扣减零花钱并记流水 */  async reviewRequest(
+  /** 家长审批：通过则扣减零花钱并记流水。familyId 必传，用于校验申请归属当前家庭（防 IDOR） */
+  async reviewRequest(
     requestId: string,
     approved: boolean,
     reviewNote?: string,
     operatorId?: string,
+    familyId?: string,
   ): Promise<AllowanceRequestRow> {
     const [existing] = await this.db
       .select()
@@ -205,6 +212,18 @@ export class AllowanceService {
       .where(eq(allowanceRequest.id, requestId))
       .limit(1);
     if (!existing) throw new NotFoundException('申请不存在');
+    if (familyId) {
+      // 安全：必须校验申请所属孩子属于当前操作者的家庭，否则任意登录用户可审批他人家庭的申请。
+      // 校验失败统一按"申请不存在"返回，不泄露其他家庭数据的存在性。
+      const [childRow] = await this.db
+        .select({ familyId: child.familyId })
+        .from(child)
+        .where(eq(child.id, existing.childId))
+        .limit(1);
+      if (!childRow || childRow.familyId !== familyId) {
+        throw new NotFoundException('申请不存在');
+      }
+    }
     if (existing.status !== 'pending') {
       throw new BadRequestException('该申请已处理');
     }

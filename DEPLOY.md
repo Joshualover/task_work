@@ -165,7 +165,7 @@ SERVER_PORT=3000
 | `STANDALONE_USER_NAME` |  | 显示名（默认「家长」） |
 | `ENABLE_CSRF=false` | ✅ | 关闭平台 CSRF，否则接口 403 |
 | `APP_LOGIN` |  | 设为 `true` 启用登录页（家长/孩子账号）；不设则用 `STANDALONE_USER_ID` 固定身份 |
-| `SESSION_SECRET` | ✅ | 登录会话签名密钥（>= 16 位强随机）；不设会用开发默认值并告警 |
+| `SESSION_SECRET` | ✅ | 登录会话签名密钥（建议 >= 32 位强随机）；生产/独立环境启用 `APP_LOGIN=true` 时**必填**，缺失将拒绝启动 |
 | `COOKIE_SECURE` |  | 走 HTTPS 时设 `true`；纯 HTTP（内网 IP）保持不设 |
 | `AI_SETTING_ENCRYPTION_KEY` | ✅ | AI 密钥静态加密（>= 16 字符） |
 | `BODY_SIZE_LIMIT` |  | 请求体上限，图片识别需要（默认 `12mb`） |
@@ -313,6 +313,7 @@ git pull
 # 增量迁移（如本次新增了该文件；脚本可重复执行，已存在则跳过）
 psql "$DATABASE_URL" -f server/database/migrations/2026-09-21_late_submit.sql
 psql "$DATABASE_URL" -f server/database/migrations/2026-09-22_task_creator.sql
+psql "$DATABASE_URL" -f server/database/migrations/2026-09-29_add_balance_checks_and_indexes.sql
 
 npm install --ignore-scripts
 MIAODA_APP_TYPE=3 npm run build:prod
