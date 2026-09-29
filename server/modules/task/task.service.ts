@@ -13,7 +13,7 @@ import type {
   TaskStatus,
   HomeworkSubtask,
 } from '@shared/api.interface';
-import { taskTemplate, taskInstance, child, pointTransaction, homeworkSubtask } from '@server/database/schema';
+import { taskTemplate, taskInstance, child, pointTransaction, homeworkSubtask, allowanceTransaction } from '@server/database/schema';
 import { isUniqueViolation } from '@server/common/utils/pg-error';
 import { todayString } from '@server/common/utils/date';
 import { NotificationService } from '../notification/notification.service';
@@ -57,6 +57,7 @@ export class TaskService {
       frequency: (row as any).frequency ?? 'daily',
       weekDays: (row as any).weekDays ?? [],
       monthDays: (row as any).monthDays ?? [],
+      allowanceAmount: row.allowanceAmount ?? 0,
       isActive: row.isActive,
       sortOrder: row.sortOrder,
       createdAt: row.createdAt.toISOString(),
@@ -80,6 +81,7 @@ export class TaskService {
         weekDays: data.weekDays ?? [],
         monthDays: data.monthDays ?? [],
         sortOrder: data.sortOrder ?? 0,
+        allowanceAmount: Math.max(0, Math.floor(data.allowanceAmount ?? 0)),
         creatorUserId: creator?.userId ?? null,
         creatorName: creator?.name ?? null,
       })
@@ -94,6 +96,7 @@ export class TaskService {
       frequency: (row as any).frequency ?? 'daily',
       weekDays: (row as any).weekDays ?? [],
       monthDays: (row as any).monthDays ?? [],
+      allowanceAmount: row.allowanceAmount ?? 0,
       isActive: row.isActive,
       sortOrder: row.sortOrder,
       createdAt: row.createdAt.toISOString(),
@@ -108,6 +111,9 @@ export class TaskService {
     const patch: Partial<typeof taskTemplate.$inferInsert> = {};
     if (data.name !== undefined) patch.name = data.name;
     if (data.defaultPoints !== undefined) patch.defaultPoints = data.defaultPoints;
+    if (data.allowanceAmount !== undefined) {
+      patch.allowanceAmount = Math.max(0, Math.floor(data.allowanceAmount));
+    }
     if (data.isDaily !== undefined) patch.isDaily = data.isDaily;
     if (data.frequency !== undefined) (patch as any).frequency = data.frequency;
     if (data.weekDays !== undefined) (patch as any).weekDays = data.weekDays;
@@ -143,6 +149,7 @@ export class TaskService {
       frequency: (row as any).frequency ?? 'daily',
       weekDays: (row as any).weekDays ?? [],
       monthDays: (row as any).monthDays ?? [],
+      allowanceAmount: row.allowanceAmount ?? 0,
       isActive: row.isActive,
       sortOrder: row.sortOrder,
       createdAt: row.createdAt.toISOString(),
@@ -257,6 +264,7 @@ export class TaskService {
       submitTime: null,
       rejectReason: null,
       completionNote: null,
+      allowanceAmount: t.allowanceAmount ?? 0,
       // 必要任务：布置人取自模板创建者（模板未记录时回退到本次操作人）
       creatorUserId: t.creatorUserId ?? creator?.userId ?? null,
       creatorName: t.creatorName ?? creator?.name ?? null,
@@ -467,6 +475,7 @@ export class TaskService {
         submitTime: null,
         rejectReason: null,
         completionNote: null,
+        allowanceAmount: Math.max(0, Math.floor(data.allowanceAmount ?? 0)),
         creatorUserId: creator?.userId ?? null,
         creatorName: creator?.name ?? null,
       })
@@ -495,6 +504,9 @@ export class TaskService {
     if (data.points !== undefined) {
       if (data.points < 0) throw new BadRequestException('积分不能为负数');
       patch.points = data.points;
+    }
+    if (data.allowanceAmount !== undefined) {
+      patch.allowanceAmount = Math.max(0, Math.floor(data.allowanceAmount));
     }
     if (data.deadline !== undefined) patch.deadline = data.deadline || null;
     if (data.extendDays !== undefined) {
@@ -556,6 +568,7 @@ export class TaskService {
         submitTime: null,
         rejectReason: null,
         completionNote: null,
+        allowanceAmount: Math.max(0, Math.floor(data.allowanceAmount ?? 0)),
         creatorUserId: creator?.userId ?? null,
         creatorName: creator?.name ?? null,
       })
@@ -885,11 +898,33 @@ export class TaskService {
           operator: operatorUserId ?? null,
         });
 
+        // 4. 任务配置了零花钱奖励时，一并入账（原子自增 + 记流水）
+        const allowanceReward = Math.max(0, Math.floor(task.allowanceAmount ?? 0));
+        if (allowanceReward > 0) {
+          const allowanceUpdated = await tx
+            .update(child)
+            .set({ allowanceBalance: sql`${child.allowanceBalance} + ${allowanceReward}` })
+            .where(eq(child.id, task.childId))
+            .returning({ balance: child.allowanceBalance });
+          if (allowanceUpdated.length > 0) {
+            await tx.insert(allowanceTransaction).values({
+              childId: task.childId,
+              changeAmount: allowanceReward,
+              balanceAfter: allowanceUpdated[0].balance,
+              type: 'income',
+              relatedType: 'task',
+              relatedId: taskId,
+              reason: `完成任务奖励零花钱：${task.name}`,
+              operator: operatorUserId ?? null,
+            });
+          }
+        }
+
         return taskUpdated[0];
       });
 
       this.logger.log(
-        `任务 ${taskId} 审核通过，发放 ${calculatedFinalPoints} 积分`,
+        `任务 ${taskId} 审核通过，发放 ${calculatedFinalPoints} 积分${task.allowanceAmount ? ` + 零花钱 ${task.allowanceAmount} 分` : ''}`,
       );
       return this.mapTaskInstance(result);
     } else {
@@ -1008,6 +1043,7 @@ export class TaskService {
       rejectReason: row.rejectReason ?? null,
       completionNote: row.completionNote ?? null,
       isLateSubmit: row.isLateSubmit ?? false,
+      allowanceAmount: row.allowanceAmount ?? 0,
       creatorUserId: row.creatorUserId ?? null,
       creatorName: row.creatorName ?? null,
       createdAt: row.createdAt.toISOString(),

@@ -62,6 +62,12 @@ class CreateTaskTemplateDto implements Omit<CreateTaskTemplateRequest, 'familyId
   @Type(() => Number)
   defaultPoints!: number;
 
+    @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  allowanceAmount?: number;
+
   @IsBoolean()
   @Type(() => Boolean)
   isDaily!: boolean;
@@ -98,6 +104,12 @@ class UpdateTaskTemplateDto implements UpdateTaskTemplateRequest {
   @Min(0)
   @Type(() => Number)
   defaultPoints?: number;
+
+    @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  allowanceAmount?: number;
 
   @IsOptional()
   @IsBoolean()
@@ -188,6 +200,12 @@ class CreateHomeworkTaskDto implements CreateHomeworkTaskRequest {
   @Type(() => Number)
   points!: number;
 
+    @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  allowanceAmount?: number;
+
   @IsOptional()
   @IsString()
   deadline?: string;
@@ -230,6 +248,12 @@ class UpdateHomeworkTaskDto implements UpdateHomeworkTaskRequest {
   @Type(() => Number)
   points?: number;
 
+    @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  allowanceAmount?: number;
+
   @IsOptional()
   @IsString()
   deadline?: string | null;
@@ -268,6 +292,12 @@ class CreateGoalTaskDto implements CreateGoalTaskRequest {
   @Min(0)
   @Type(() => Number)
   points!: number;
+
+    @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  allowanceAmount?: number;
 
   @IsNumber()
   @Min(1)

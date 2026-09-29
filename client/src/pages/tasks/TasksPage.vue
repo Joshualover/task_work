@@ -19,6 +19,7 @@ import { taskApi, aiApi } from '@/api';
 import { useChildStore } from '@/stores/child';
 import { todayString } from '@/utils/date';
 import { taskCardStyle } from '@/utils/subject-image';
+import { fenToYuan, yuanToFen } from '@/utils/money';
 import { snapshotScroll } from '@/utils/scroll';
 import { createLatestGuard } from '@/utils/request-guard';
 import { toast } from '@/components/ui/toast';
@@ -62,6 +63,8 @@ interface FormData {
   name: string;
   subject: string;
   points: number;
+  /** 零花钱奖励（元），用字符串便于输入 */
+  allowanceYuan: string;
   deadline: string;
   taskDate: string;
   /** 遇周末/节假日顺延 */
@@ -89,6 +92,7 @@ const formData = reactive<FormData>({
   name: '',
   subject: '',
   points: 10,
+  allowanceYuan: '',
   deadline: '',
   taskDate: '',
   extendHoliday: false,
@@ -380,6 +384,7 @@ const handleCreateHomework = async (): Promise<void> => {
         await taskApi.updateTask(editingTaskId.value, {
           name: formData.name.trim(),
           points: formData.points,
+          allowanceAmount: yuanToFen(formData.allowanceYuan || 0),
           deadline: formData.deadline || null,
           extendDays,
           taskDate: formData.taskDate || today.value,
@@ -391,6 +396,7 @@ const handleCreateHomework = async (): Promise<void> => {
           childId: currentChildId.value,
           name: formData.name.trim(),
           points: formData.points,
+          allowanceAmount: yuanToFen(formData.allowanceYuan || 0),
           targetValue: target,
           unit: formData.unit.trim() || undefined,
           deadline: formData.deadline || undefined,
@@ -483,6 +489,7 @@ const handleCreateHomework = async (): Promise<void> => {
         name: formData.name,
         subject: formData.subject,
         points: formData.points,
+        allowanceAmount: yuanToFen(formData.allowanceYuan || 0),
         deadline: formData.deadline || undefined,
         extendDays,
         taskDate: formData.taskDate || today.value,
@@ -505,6 +512,7 @@ const resetForm = (): void => {
   formData.name = '';
   formData.subject = '';
   formData.points = 10;
+  formData.allowanceYuan = '';
   formData.deadline = '';
   formData.taskDate = today.value;
   formData.extendHoliday = false;
@@ -531,6 +539,8 @@ const openEditTask = (task: TaskInstance): void => {
   formData.subject = task.subject ?? '';
   formData.points = task.points;
   formData.deadline = task.deadline ?? '';
+  formData.allowanceYuan =
+    (task.allowanceAmount ?? 0) > 0 ? String(fenToYuan(task.allowanceAmount)) : '';
   formData.extendHoliday = (task.extendDays ?? 0) > 0;
   formData.extendDays = (task.extendDays ?? 0) > 0 ? task.extendDays : 2;
   formData.taskDate = task.taskDate;
@@ -1020,6 +1030,13 @@ const removeImage = (index: number): void => {
               >
 {{ task.points }} 积分
               </Badge>
+              <Badge
+                v-if="(task.allowanceAmount ?? 0) > 0"
+                variant="default"
+                class="rounded-full bg-green-100 text-[#52C41A] border-transparent"
+              >
+                +{{ fenToYuan(task.allowanceAmount) }} 元零花钱
+              </Badge>
               <span v-if="task.deadline" class="flex items-center gap-1 text-xs text-gray-400">
                 <Clock class="h-3 w-3" />
                 截止 {{ task.deadline }}
@@ -1200,6 +1217,13 @@ const removeImage = (index: number): void => {
               >
 {{ task.points }} 积分
               </Badge>
+              <Badge
+                v-if="(task.allowanceAmount ?? 0) > 0"
+                variant="default"
+                class="rounded-full bg-green-100 text-[#52C41A] border-transparent"
+              >
+                +{{ fenToYuan(task.allowanceAmount) }} 元零花钱
+              </Badge>
               <span v-if="task.deadline" class="flex items-center gap-1 text-xs text-gray-400">
                 <Clock class="h-3 w-3" />
                 截止 {{ task.deadline }}
@@ -1379,6 +1403,13 @@ const removeImage = (index: number): void => {
               >
 {{ task.points }} 积分
               </Badge>
+              <Badge
+                v-if="(task.allowanceAmount ?? 0) > 0"
+                variant="default"
+                class="rounded-full bg-green-100 text-[#52C41A] border-transparent"
+              >
+                +{{ fenToYuan(task.allowanceAmount) }} 元零花钱
+              </Badge>
               <span v-if="task.deadline" class="flex items-center gap-1 text-xs text-gray-400">
                 <Clock class="h-3 w-3" />
                 截止 {{ task.deadline }}
@@ -1550,6 +1581,13 @@ const removeImage = (index: number): void => {
               >
 {{ task.points }} 积分
               </Badge>
+              <Badge
+                v-if="(task.allowanceAmount ?? 0) > 0"
+                variant="default"
+                class="rounded-full bg-green-100 text-[#52C41A] border-transparent"
+              >
+                +{{ fenToYuan(task.allowanceAmount) }} 元零花钱
+              </Badge>
               <span v-if="task.deadline" class="flex items-center gap-1 text-xs text-gray-400">
                 <Clock class="h-3 w-3" />
                 截止 {{ task.deadline }}
@@ -1710,6 +1748,13 @@ const removeImage = (index: number): void => {
                 class="rounded-full bg-orange-100 text-[#FF8A3D] border-transparent"
               >
 {{ task.points }} 积分
+              </Badge>
+              <Badge
+                v-if="(task.allowanceAmount ?? 0) > 0"
+                variant="default"
+                class="rounded-full bg-green-100 text-[#52C41A] border-transparent"
+              >
+                +{{ fenToYuan(task.allowanceAmount) }} 元零花钱
               </Badge>
               <span v-if="task.deadline" class="flex items-center gap-1 text-xs text-gray-400">
                 <Clock class="h-3 w-3" />
@@ -1896,6 +1941,23 @@ const removeImage = (index: number): void => {
             @update:value="(v: string | number) => formData.points = Number(v) || 0"
             class="rounded-xl"
           />
+        </div>
+
+        <div class="space-y-2">
+          <Label for="allowance" class="text-sm font-medium text-[#1F2329]">
+            零花钱奖励（元）
+            <span class="text-xs text-gray-400 ml-1">（选填）</span>
+          </Label>
+          <Input
+            id="allowance"
+            type="number"
+            v-model:value="formData.allowanceYuan"
+            placeholder="如 2 表示完成再给 2 元零花钱"
+            class="rounded-xl"
+          />
+          <p class="text-xs text-gray-400">
+            家长审批通过后，除积分外还会往孩子的零花钱账户入账
+          </p>
         </div>
 
         <div class="space-y-2">

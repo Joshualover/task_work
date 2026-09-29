@@ -23,6 +23,8 @@ export interface TaskTemplate {
   familyId: string;
   name: string;
   defaultPoints: number;
+  /** 完成额外奖励的零花钱（分），0=不奖励 */
+  allowanceAmount: number;
   isDaily: boolean;
   frequency: 'daily' | 'weekly' | 'monthly';
   weekDays: number[];
@@ -62,6 +64,8 @@ export interface TaskInstance {
   completionNote: string | null;
   /** 是否为逾期后的补提交（提交时任务已逾期，需家长审批） */
   isLateSubmit: boolean;
+  /** 完成并通过审批后额外奖励的零花钱（分），0=不奖励 */
+  allowanceAmount: number;
   /** 布置该任务的家长账号 id */
   creatorUserId: string | null;
   /** 布置该任务的家长昵称（孩子端展示「XX 布置」） */
@@ -213,6 +217,8 @@ export interface TaskTemplateListResponse {
 export interface CreateTaskTemplateRequest {
   name: string;
   defaultPoints: number;
+  /** 完成额外奖励的零花钱（分），不填=0 */
+  allowanceAmount?: number;
   isDaily: boolean;
   frequency?: 'daily' | 'weekly' | 'monthly';
   weekDays?: number[];
@@ -222,6 +228,7 @@ export interface CreateTaskTemplateRequest {
 export interface UpdateTaskTemplateRequest {
   name?: string;
   defaultPoints?: number;
+  allowanceAmount?: number;
   isDaily?: boolean;
   frequency?: 'daily' | 'weekly' | 'monthly';
   weekDays?: number[];
@@ -249,6 +256,8 @@ export interface CreateHomeworkTaskRequest {
   name: string;
   subject?: string;
   points: number;
+  /** 完成额外奖励的零花钱（分），不填=0 */
+  allowanceAmount?: number;
   deadline?: string;
   /** 截止日后的顺延天数（遇周末/节假日） */
   extendDays?: number;
@@ -288,6 +297,7 @@ export interface UpdateHomeworkTaskRequest {
   name?: string;
   subject?: string | null;
   points?: number;
+  allowanceAmount?: number;
   deadline?: string | null;
   extendDays?: number;
   taskDate?: string;
@@ -301,6 +311,8 @@ export interface CreateGoalTaskRequest {
   childId: string;
   name: string;
   points: number;
+  /** 完成额外奖励的零花钱（分），不填=0 */
+  allowanceAmount?: number;
   /** 目标值（如 100） */
   targetValue: number;
   /** 单位（可选，如 个 / 页 / 分钟） */

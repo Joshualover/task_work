@@ -74,6 +74,13 @@
             {{ template.defaultPoints }} 积分
           </Badge>
           <Badge
+            v-if="(template.allowanceAmount ?? 0) > 0"
+            variant="default"
+            class="rounded-full bg-green-100 text-[#52C41A] border-transparent"
+          >
+            +{{ fenToYuan(template.allowanceAmount) }} 元零花钱
+          </Badge>
+          <Badge
             v-if="template.isDaily"
             variant="outline"
             class="rounded-full border-blue-200 text-[#36BFFA]"
@@ -137,6 +144,22 @@
             @update:value="handlePointsChange"
             class="rounded-xl"
           />
+        </div>
+
+        <div class="space-y-2">
+          <Label for="allowance" class="text-sm font-medium text-[#1F2329]">
+            零花钱奖励（元）
+          </Label>
+          <Input
+            id="allowance"
+            type="number"
+            v-model:value="formData.allowanceYuan"
+            placeholder="选填，如 2 表示额外奖励 2 元"
+            class="rounded-xl"
+          />
+          <p class="text-xs text-gray-400">
+            家长审批通过后，除积分外还会往孩子的零花钱账户入账
+          </p>
         </div>
 
         <!-- Frequency Selection -->
@@ -274,6 +297,7 @@ import { logger } from '@lark-apaas/client-toolkit/logger';
 import { Plus, Pencil, Trash2, Star, GripVertical } from 'lucide-vue-next';
 
 import { taskApi, familyApi } from '@/api';
+import { fenToYuan, yuanToFen } from '@/utils/money';
 import { toast } from '@/components/ui/toast';
 import { getErrorMessage } from '@/utils/error';
 import Button from '@/components/ui/Button.vue';
@@ -293,6 +317,8 @@ type Frequency = 'daily' | 'weekly' | 'monthly';
 interface FormData {
   name: string;
   defaultPoints: number;
+  /** 零花钱奖励（元），用字符串便于输入 */
+  allowanceYuan: string;
   isDaily: boolean;
   frequency: Frequency;
   weekDays: number[];
@@ -388,6 +414,7 @@ function handleOpenCreate(): void {
   editingTemplate.value = null;
   formData.value = {
     name: '',
+    allowanceYuan: '',
     defaultPoints: 10,
     isDaily: true,
     frequency: 'daily',
@@ -403,6 +430,10 @@ function handleOpenEdit(template: TaskTemplate): void {
   formData.value = {
     name: template.name,
     defaultPoints: template.defaultPoints,
+    allowanceYuan:
+      (template.allowanceAmount ?? 0) > 0
+        ? String(fenToYuan(template.allowanceAmount))
+        : '',
     isDaily: true,
     frequency: template.frequency ?? 'daily',
     weekDays: template.weekDays ? [...template.weekDays] : [],
@@ -464,6 +495,7 @@ async function handleSubmit(): Promise<void> {
       const updateData: UpdateTaskTemplateRequest = {
         name: formData.value.name,
         defaultPoints: formData.value.defaultPoints,
+        allowanceAmount: yuanToFen(formData.value.allowanceYuan || 0),
         isDaily: true,
         frequency: formData.value.frequency,
         weekDays: formData.value.weekDays,
@@ -475,6 +507,7 @@ async function handleSubmit(): Promise<void> {
       const createData: CreateTaskTemplateRequest & { familyId: string } = {
         name: formData.value.name,
         defaultPoints: formData.value.defaultPoints,
+        allowanceAmount: yuanToFen(formData.value.allowanceYuan || 0),
         isDaily: true,
         frequency: formData.value.frequency,
         weekDays: formData.value.weekDays,

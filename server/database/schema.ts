@@ -374,6 +374,8 @@ export const taskInstance = pgTable("task_instance", {
   completionNote: text("completion_note"),
   // 是否为逾期后的补提交（提交时任务已逾期）
   isLateSubmit: boolean("is_late_submit").notNull().default(false),
+  // 完成任务额外奖励的零花钱（分），0=不奖励
+  allowanceAmount: integer("allowance_amount").notNull().default(0),
   // 布置任务的家长（哪个管理员创建的）：id + 昵称快照
   creatorUserId: uuid("creator_user_id"),
   creatorName: varchar("creator_name", { length: 50 }),
@@ -421,6 +423,8 @@ export const taskTemplate = pgTable("task_template", {
   frequency: varchar("frequency", { length: 20 }).notNull().default('daily'),
   weekDays: integer("week_days").array().default([]),
   monthDays: integer("month_days").array().default([]),
+  // 完成任务额外奖励的零花钱（分），0=不奖励
+  allowanceAmount: integer("allowance_amount").notNull().default(0),
   // 创建者（哪位家长配置的）：id + 昵称快照
   creatorUserId: uuid("creator_user_id"),
   creatorName: varchar("creator_name", { length: 50 }),

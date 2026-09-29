@@ -303,6 +303,12 @@
                   <span class="text-lg font-bold text-[#FF8A3D]">
                     +{{ task.points }}
                   </span>
+                  <span
+                    v-if="(task.allowanceAmount ?? 0) > 0"
+                    class="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-[#52C41A]"
+                  >
+                    另 +{{ fenToYuan(task.allowanceAmount) }} 元零花钱
+                  </span>
                 </div>
                 <template
                   v-if="
@@ -522,6 +528,7 @@ import { taskApi, pointApi, aiApi } from '@/api';
 import { useChildStore } from '@/stores/child';
 import { todayString } from '@/utils/date';
 import { taskCardStyle } from '@/utils/subject-image';
+import { fenToYuan } from '@/utils/money';
 import { burstConfetti } from '@/utils/confetti';
 import { snapshotScroll } from '@/utils/scroll';
 import Dialog from '@/components/ui/Dialog.vue';

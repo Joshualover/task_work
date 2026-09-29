@@ -133,6 +133,7 @@ CREATE TABLE IF NOT EXISTS task_template (
   frequency varchar(20) NOT NULL DEFAULT 'daily',
   week_days integer[] DEFAULT '{}',
   month_days integer[] DEFAULT '{}',
+  allowance_amount integer NOT NULL DEFAULT 0,
   creator_user_id uuid,
   creator_name varchar(50),
   _created_at timestamptz(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -165,6 +166,7 @@ CREATE TABLE IF NOT EXISTS task_instance (
   reject_reason varchar(500),
   completion_note text,
   is_late_submit boolean NOT NULL DEFAULT false,
+  allowance_amount integer NOT NULL DEFAULT 0,
   creator_user_id uuid,
   creator_name varchar(50),
   _created_at timestamptz(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -333,3 +335,9 @@ CREATE INDEX IF NOT EXISTS idx_allowance_transaction_child_created ON allowance_
 CREATE INDEX IF NOT EXISTS idx_allowance_request_child ON allowance_request (child_id, _created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_redemption_child_reward_created ON redemption (child_id, reward_id, _created_at);
 CREATE INDEX IF NOT EXISTS idx_task_instance_child_date ON task_instance (child_id, task_date);
+
+-- 2026-09-30：任务可奖励零花钱（非负约束）
+ALTER TABLE task_template DROP CONSTRAINT IF EXISTS chk_task_template_allowance_non_negative;
+ALTER TABLE task_template ADD CONSTRAINT chk_task_template_allowance_non_negative CHECK (allowance_amount >= 0);
+ALTER TABLE task_instance DROP CONSTRAINT IF EXISTS chk_task_instance_allowance_non_negative;
+ALTER TABLE task_instance ADD CONSTRAINT chk_task_instance_allowance_non_negative CHECK (allowance_amount >= 0);
