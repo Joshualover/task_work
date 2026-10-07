@@ -167,6 +167,7 @@ CREATE TABLE IF NOT EXISTS task_instance (
   completion_note text,
   is_late_submit boolean NOT NULL DEFAULT false,
   allowance_amount integer NOT NULL DEFAULT 0,
+  linked_allowance_goal boolean NOT NULL DEFAULT false,
   creator_user_id uuid,
   creator_name varchar(50),
   _created_at timestamptz(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -335,6 +336,9 @@ CREATE INDEX IF NOT EXISTS idx_allowance_transaction_child_created ON allowance_
 CREATE INDEX IF NOT EXISTS idx_allowance_request_child ON allowance_request (child_id, _created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_redemption_child_reward_created ON redemption (child_id, reward_id, _created_at);
 CREATE INDEX IF NOT EXISTS idx_task_instance_child_date ON task_instance (child_id, task_date);
+
+-- 2026-10-01：零花钱目标（进度跟随余额）
+CREATE INDEX IF NOT EXISTS idx_task_instance_allowance_goal ON task_instance (child_id, type, linked_allowance_goal) WHERE linked_allowance_goal = true;
 
 -- 2026-09-30：任务可奖励零花钱（非负约束）
 ALTER TABLE task_template DROP CONSTRAINT IF EXISTS chk_task_template_allowance_non_negative;

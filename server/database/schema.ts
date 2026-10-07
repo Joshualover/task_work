@@ -376,6 +376,8 @@ export const taskInstance = pgTable("task_instance", {
   isLateSubmit: boolean("is_late_submit").notNull().default(false),
   // 完成任务额外奖励的零花钱（分），0=不奖励
   allowanceAmount: integer("allowance_amount").notNull().default(0),
+  // 目标型任务是否跟随零花钱余额（true 时进度 = 余额折算的元数）
+  linkedAllowanceGoal: boolean("linked_allowance_goal").notNull().default(false),
   // 布置任务的家长（哪个管理员创建的）：id + 昵称快照
   creatorUserId: uuid("creator_user_id"),
   creatorName: varchar("creator_name", { length: 50 }),

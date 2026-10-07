@@ -277,6 +277,11 @@ class UpdateHomeworkTaskDto implements UpdateHomeworkTaskRequest {
   @IsOptional()
   @IsString()
   unit?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  linkedAllowanceGoal?: boolean;
 }
 
 class CreateGoalTaskDto implements CreateGoalTaskRequest {
@@ -307,6 +312,11 @@ class CreateGoalTaskDto implements CreateGoalTaskRequest {
   @IsOptional()
   @IsString()
   unit?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  linkedAllowanceGoal?: boolean;
 
   @IsOptional()
   @IsString()

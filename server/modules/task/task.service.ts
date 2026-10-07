@@ -300,6 +300,11 @@ export class TaskService {
       });
     }
 
+    // 零花钱目标：余额达标则自动提交待确认（惰性同步，失败不影响查询）
+    await this.syncAllowanceGoals(params.childId).catch((err: unknown) => {
+      this.logger.warn(`同步零花钱目标失败: ${String(err)}`);
+    });
+
     const conditions = [eq(taskInstance.childId, params.childId)];
 
     if (params.date) {
@@ -349,7 +354,9 @@ export class TaskService {
       .where(and(...conditions))
       .orderBy(taskInstance.createdAt);
 
-    const mapped = rows.map((row) => this.mapTaskInstance(row));
+    const mapped = await this.applyAllowanceGoalProgress(
+      rows.map((row) => this.mapTaskInstance(row)),
+    );
 
     // 附带子任务（多项任务）：按 suggestionId 关联 homework_subtask
     const suggestionIds = [
@@ -440,6 +447,71 @@ export class TaskService {
     return Number(total);
   }
 
+  /** 零花钱余额折算成「元」（向下取整），用于零花钱目标的进度 */
+  private async allowanceYuanOf(childId: string): Promise<number> {
+    const [row] = await this.db
+      .select({ balance: child.allowanceBalance })
+      .from(child)
+      .where(eq(child.id, childId))
+      .limit(1);
+    return Math.max(0, Math.floor((row?.balance ?? 0) / 100));
+  }
+
+  /** 把「跟随零花钱余额」的目标进度覆盖为当前余额（元） */
+  private async applyAllowanceGoalProgress(
+    tasks: TaskInstance[],
+  ): Promise<TaskInstance[]> {
+    const linked = tasks.filter(
+      (t) => t.linkedAllowanceGoal && t.type === 'goal',
+    );
+    if (linked.length === 0) return tasks;
+    const yuan = await this.allowanceYuanOf(linked[0].childId);
+    const ids = new Set(linked.map((t) => t.id));
+    return tasks.map((t) => (ids.has(t.id) ? { ...t, currentValue: yuan } : t));
+  }
+
+  /**
+   * 零花钱目标自动达成：余额（元）>= 目标值时，自动提交为「待确认」等家长审批。
+   * 与逾期标记一样在读取列表时惰性执行，避免每次余额变动都扫库。
+   */
+  async syncAllowanceGoals(childId: string): Promise<number> {
+    const rows = await this.db
+      .select()
+      .from(taskInstance)
+      .where(
+        and(
+          eq(taskInstance.childId, childId),
+          eq(taskInstance.type, 'goal'),
+          eq(taskInstance.linkedAllowanceGoal, true),
+          inArray(taskInstance.status, ['pending', 'overdue']),
+        ),
+      );
+    if (rows.length === 0) return 0;
+
+    const yuan = await this.allowanceYuanOf(childId);
+    let submitted = 0;
+    for (const row of rows) {
+      const target = row.targetValue ?? 0;
+      if (target <= 0 || yuan < target) continue;
+      try {
+        await this.submitTask(
+          row.id,
+          `零花钱余额已达 ${yuan} 元，自动达成目标`,
+        );
+        submitted += 1;
+      } catch (err) {
+        // 并发下可能已被提交/审核，忽略
+        this.logger.warn(`零花钱目标自动提交失败 ${row.id}: ${String(err)}`);
+      }
+    }
+    if (submitted > 0) {
+      this.logger.log(
+        `零花钱目标自动达成 ${submitted} 个（余额 ${yuan} 元）`,
+      );
+    }
+    return submitted;
+  }
+
   async getTask(taskId: string): Promise<TaskInstance> {
     const rows = await this.db
       .select()
@@ -450,7 +522,11 @@ export class TaskService {
       throw new NotFoundException('任务不存在');
     }
 
-    return this.mapTaskInstance(rows[0]);
+    const task = this.mapTaskInstance(rows[0]);
+    if (task.linkedAllowanceGoal && task.type === 'goal') {
+      task.currentValue = await this.allowanceYuanOf(task.childId);
+    }
+    return task;
   }
 
   async createHomeworkTask(
@@ -508,6 +584,13 @@ export class TaskService {
     if (data.allowanceAmount !== undefined) {
       patch.allowanceAmount = Math.max(0, Math.floor(data.allowanceAmount));
     }
+    if (data.linkedAllowanceGoal !== undefined) {
+      if (data.linkedAllowanceGoal && task.type !== 'goal') {
+        throw new BadRequestException('只有目标任务可以跟随零花钱余额');
+      }
+      patch.linkedAllowanceGoal = data.linkedAllowanceGoal;
+      if (data.linkedAllowanceGoal) patch.unit = '元';
+    }
     if (data.deadline !== undefined) patch.deadline = data.deadline || null;
     if (data.extendDays !== undefined) {
       patch.extendDays = Math.max(0, Math.floor(Number(data.extendDays) || 0));
@@ -546,6 +629,8 @@ export class TaskService {
     if (!Number.isFinite(target) || target <= 0) {
       throw new BadRequestException('目标值必须为正整数');
     }
+    // 是否跟随零花钱余额（如「存够 100 元」）
+    const linkedAllowanceGoal = data.linkedAllowanceGoal === true;
 
     const [row] = await this.db
       .insert(taskInstance)
@@ -562,13 +647,15 @@ export class TaskService {
         extendDays: data.extendDays ?? 0,
         targetValue: target,
         currentValue: 0,
-        unit: data.unit?.trim() || null,
+        // 跟随零花钱余额时进度值就是「元」，单位强制为元
+        unit: linkedAllowanceGoal ? '元' : data.unit?.trim() || null,
         taskDate: data.taskDate,
         status: 'pending',
         submitTime: null,
         rejectReason: null,
         completionNote: null,
         allowanceAmount: Math.max(0, Math.floor(data.allowanceAmount ?? 0)),
+        linkedAllowanceGoal,
         creatorUserId: creator?.userId ?? null,
         creatorName: creator?.name ?? null,
       })
@@ -586,6 +673,11 @@ export class TaskService {
     const task = await this.getTask(taskId);
     if (task.type !== 'goal') {
       throw new BadRequestException('仅目标任务可记录进度');
+    }
+    if (task.linkedAllowanceGoal) {
+      throw new BadRequestException(
+        '该目标的进度跟随零花钱余额自动更新，无需手动记录',
+      );
     }
     if (task.status === 'submitted') {
       throw new BadRequestException('任务已提交，等待家长确认');
@@ -1044,6 +1136,7 @@ export class TaskService {
       completionNote: row.completionNote ?? null,
       isLateSubmit: row.isLateSubmit ?? false,
       allowanceAmount: row.allowanceAmount ?? 0,
+      linkedAllowanceGoal: row.linkedAllowanceGoal ?? false,
       creatorUserId: row.creatorUserId ?? null,
       creatorName: row.creatorName ?? null,
       createdAt: row.createdAt.toISOString(),

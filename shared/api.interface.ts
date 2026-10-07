@@ -66,6 +66,8 @@ export interface TaskInstance {
   isLateSubmit: boolean;
   /** 完成并通过审批后额外奖励的零花钱（分），0=不奖励 */
   allowanceAmount: number;
+  /** 目标型任务：进度是否跟随零花钱余额（true 时 currentValue = 余额折算的元数，孩子无需手动记录） */
+  linkedAllowanceGoal: boolean;
   /** 布置该任务的家长账号 id */
   creatorUserId: string | null;
   /** 布置该任务的家长昵称（孩子端展示「XX 布置」） */
@@ -298,6 +300,8 @@ export interface UpdateHomeworkTaskRequest {
   subject?: string | null;
   points?: number;
   allowanceAmount?: number;
+  /** 目标型任务：进度跟随零花钱余额 */
+  linkedAllowanceGoal?: boolean;
   deadline?: string | null;
   extendDays?: number;
   taskDate?: string;
@@ -313,6 +317,8 @@ export interface CreateGoalTaskRequest {
   points: number;
   /** 完成额外奖励的零花钱（分），不填=0 */
   allowanceAmount?: number;
+  /** 进度跟随零花钱余额（如「存够 100 元」），true 时 unit 建议用「元」 */
+  linkedAllowanceGoal?: boolean;
   /** 目标值（如 100） */
   targetValue: number;
   /** 单位（可选，如 个 / 页 / 分钟） */

@@ -74,6 +74,8 @@ interface FormData {
   /** 目标型任务：目标值 / 单位 */
   targetValue: number;
   unit: string;
+  /** 目标型任务：进度是否跟随零花钱余额（如「存够 100 元」） */
+  linkedAllowanceGoal: boolean;
 }
 
 interface SubtaskFormItem {
@@ -389,7 +391,8 @@ const handleCreateHomework = async (): Promise<void> => {
           extendDays,
           taskDate: formData.taskDate || today.value,
           targetValue: target,
-          unit: formData.unit.trim() || null,
+          unit: formData.linkedAllowanceGoal ? '元' : formData.unit.trim() || null,
+          linkedAllowanceGoal: formData.linkedAllowanceGoal,
         });
       } else {
         await taskApi.createGoalTask({
@@ -398,7 +401,10 @@ const handleCreateHomework = async (): Promise<void> => {
           points: formData.points,
           allowanceAmount: yuanToFen(formData.allowanceYuan || 0),
           targetValue: target,
-          unit: formData.unit.trim() || undefined,
+          unit: formData.linkedAllowanceGoal
+            ? '元'
+            : formData.unit.trim() || undefined,
+          linkedAllowanceGoal: formData.linkedAllowanceGoal,
           deadline: formData.deadline || undefined,
           extendDays,
           taskDate: formData.taskDate || today.value,
@@ -519,6 +525,7 @@ const resetForm = (): void => {
   formData.extendDays = 2;
   formData.targetValue = 100;
   formData.unit = '个';
+  formData.linkedAllowanceGoal = false;
   formSubtasks.splice(0, formSubtasks.length);
   isEditMode.value = false;
   editingSuggestionId.value = '';
@@ -535,6 +542,7 @@ const openEditTask = (task: TaskInstance): void => {
   formData.taskKind = task.type === 'goal' ? 'goal' : 'homework';
   formData.targetValue = task.targetValue ?? 100;
   formData.unit = task.unit ?? '个';
+  formData.linkedAllowanceGoal = task.linkedAllowanceGoal === true;
   formData.name = task.name;
   formData.subject = task.subject ?? '';
   formData.points = task.points;
@@ -998,6 +1006,13 @@ const removeImage = (index: number): void => {
                 目标任务
               </Badge>
               <Badge
+                v-if="task.linkedAllowanceGoal"
+                variant="outline"
+                class="rounded-full border-green-200 text-[#52C41A]"
+              >
+                零花钱目标
+              </Badge>
+              <Badge
                 v-if="task.isLateSubmit"
                 variant="default"
                 class="rounded-full bg-red-100 text-[#FF4D4F] border-transparent"
@@ -1183,6 +1198,13 @@ const removeImage = (index: number): void => {
                 class="rounded-full border-purple-200 text-purple-500"
               >
                 目标任务
+              </Badge>
+              <Badge
+                v-if="task.linkedAllowanceGoal"
+                variant="outline"
+                class="rounded-full border-green-200 text-[#52C41A]"
+              >
+                零花钱目标
               </Badge>
               <Badge
                 v-if="task.isLateSubmit"
@@ -1371,6 +1393,13 @@ const removeImage = (index: number): void => {
                 目标任务
               </Badge>
               <Badge
+                v-if="task.linkedAllowanceGoal"
+                variant="outline"
+                class="rounded-full border-green-200 text-[#52C41A]"
+              >
+                零花钱目标
+              </Badge>
+              <Badge
                 v-if="task.isLateSubmit"
                 variant="default"
                 class="rounded-full bg-red-100 text-[#FF4D4F] border-transparent"
@@ -1549,6 +1578,13 @@ const removeImage = (index: number): void => {
                 目标任务
               </Badge>
               <Badge
+                v-if="task.linkedAllowanceGoal"
+                variant="outline"
+                class="rounded-full border-green-200 text-[#52C41A]"
+              >
+                零花钱目标
+              </Badge>
+              <Badge
                 v-if="task.isLateSubmit"
                 variant="default"
                 class="rounded-full bg-red-100 text-[#FF4D4F] border-transparent"
@@ -1715,6 +1751,13 @@ const removeImage = (index: number): void => {
                 class="rounded-full border-purple-200 text-purple-500"
               >
                 目标任务
+              </Badge>
+              <Badge
+                v-if="task.linkedAllowanceGoal"
+                variant="outline"
+                class="rounded-full border-green-200 text-[#52C41A]"
+              >
+                零花钱目标
               </Badge>
               <Badge
                 v-if="task.isLateSubmit"
@@ -1905,24 +1948,48 @@ const removeImage = (index: number): void => {
           />
         </div>
 
-        <!-- 目标型任务：目标值与单位 -->
-        <div v-if="formData.taskKind === 'goal'" class="grid grid-cols-2 gap-3">
-          <div class="space-y-2">
-            <Label class="text-sm font-medium text-[#1F2329]">目标值 *</Label>
-            <Input
-              type="number"
-              :value="String(formData.targetValue)"
-              @update:value="(v: string | number) => formData.targetValue = Number(v) || 0"
-              class="rounded-xl"
+        <!-- 目标型任务：目标值与单位 / 零花钱目标 -->
+        <div v-if="formData.taskKind === 'goal'" class="space-y-3">
+          <label class="flex cursor-pointer items-start gap-3 rounded-xl bg-green-50 p-3">
+            <Switch
+              :modelValue="formData.linkedAllowanceGoal"
+              @update:modelValue="(v: boolean) => (formData.linkedAllowanceGoal = v)"
             />
-          </div>
-          <div class="space-y-2">
-            <Label class="text-sm font-medium text-[#1F2329]">单位</Label>
-            <Input
-              v-model:value="formData.unit"
-              placeholder="个 / 页 / 分钟"
-              class="rounded-xl"
-            />
+            <span class="text-sm">
+              <span class="font-medium text-[#1F2329]">跟随零花钱余额</span>
+              <span class="mt-0.5 block text-xs text-gray-500">
+                适合「存够 100 元买玩具」这类目标：进度自动等于零花钱余额，孩子无需手动记录，余额达标后自动提交待确认
+              </span>
+            </span>
+          </label>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div class="space-y-2">
+              <Label class="text-sm font-medium text-[#1F2329]">
+                {{ formData.linkedAllowanceGoal ? '目标金额（元）*' : '目标值 *' }}
+              </Label>
+              <Input
+                type="number"
+                :value="String(formData.targetValue)"
+                @update:value="(v: string | number) => formData.targetValue = Number(v) || 0"
+                class="rounded-xl"
+              />
+            </div>
+            <div class="space-y-2">
+              <Label class="text-sm font-medium text-[#1F2329]">单位</Label>
+              <Input
+                v-if="!formData.linkedAllowanceGoal"
+                v-model:value="formData.unit"
+                placeholder="个 / 页 / 分钟"
+                class="rounded-xl"
+              />
+              <div
+                v-else
+                class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500"
+              >
+                元（自动）
+              </div>
+            </div>
           </div>
         </div>
 

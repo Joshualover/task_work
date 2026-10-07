@@ -245,7 +245,15 @@
                 <!-- 目标型任务进度 -->
                 <div v-if="task.type === 'goal'" class="mt-2">
                   <div class="mb-1 flex items-center justify-between text-xs text-gray-500">
-                    <span>目标进度</span>
+                    <span>
+                      目标进度
+                      <span
+                        v-if="task.linkedAllowanceGoal"
+                        class="ml-1 rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] text-[#52C41A]"
+                      >
+                        跟随零花钱余额
+                      </span>
+                    </span>
                     <span class="font-semibold text-[#FF8A3D]">
                       {{ goalProgressLabel(task) }}
                     </span>
@@ -313,6 +321,7 @@
                 <template
                   v-if="
                     task.type === 'goal' &&
+                    !task.linkedAllowanceGoal &&
                     (task.status === 'pending' || task.status === 'overdue')
                   "
                 >
@@ -354,6 +363,16 @@
                 </button>
                 <p
                   v-if="
+                    task.type === 'goal' &&
+                    task.linkedAllowanceGoal &&
+                    (task.status === 'pending' || task.status === 'overdue')
+                  "
+                  class="text-right text-xs text-[#52C41A]"
+                >
+                  进度自动跟随零花钱余额
+                </p>
+                <p
+                  v-else-if="
                     (task.status === 'pending' || task.status === 'overdue') &&
                     hasSubtasks(task.id) &&
                     !allSubtasksCompleted(task.id)
