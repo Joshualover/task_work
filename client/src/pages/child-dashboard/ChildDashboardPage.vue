@@ -355,6 +355,12 @@
                     今日 {{ task.habitCount ?? 0 }}/{{
                       task.habitDailyLimit > 0 ? task.habitDailyLimit : '∞'
                     }} 次
+                    <span
+                      v-if="task.habitNeedApproval && (task.habitPendingCount ?? 0) > 0"
+                      class="text-[#FF8A3D]"
+                    >
+                      · 待确认 {{ task.habitPendingCount }}
+                    </span>
                   </div>
                   <button
                     type="button"
@@ -373,7 +379,9 @@
                         ? '今日已完成'
                         : habitCheckingId === task.id
                           ? '打卡中...'
-                          : '完成一次'
+                          : task.habitNeedApproval
+                            ? '完成一次（待确认）'
+                            : '完成一次'
                     }}
                   </button>
                   <div class="text-right text-xs text-gray-400">
@@ -383,6 +391,9 @@
                       class="text-[#52C41A]"
                     >
                       · +{{ fenToYuan(task.habitAllowancePerTime) }} 元
+                    </span>
+                    <span v-if="task.habitNeedApproval" class="text-[#FF8A3D]">
+                      · 需家长确认后发放
                     </span>
                   </div>
                 </template>
@@ -691,14 +702,18 @@ async function handleHabitCheck(task: TaskInstance): Promise<void> {
   habitCheckingId.value = task.id;
   try {
     const result = await taskApi.checkHabit(task.id);
-    const parts: string[] = [];
-    if (result.awardedPoints > 0) parts.push(`+${result.awardedPoints} 积分`);
-    if (result.awardedAllowance > 0) {
-      parts.push(`+${fenToYuan(result.awardedAllowance)} 元零花钱`);
+    if (result.pendingApproval) {
+      toast.info(`已提交第 ${result.count} 次打卡，等家长确认后发放奖励`);
+    } else {
+      const parts: string[] = [];
+      if (result.awardedPoints > 0) parts.push(`+${result.awardedPoints} 积分`);
+      if (result.awardedAllowance > 0) {
+        parts.push(`+${fenToYuan(result.awardedAllowance)} 元零花钱`);
+      }
+      toast.success(
+        `打卡成功（第 ${result.count} 次）${parts.length ? '：' + parts.join('、') : ''}`,
+      );
     }
-    toast.success(
-      `打卡成功（第 ${result.count} 次）${parts.length ? '：' + parts.join('、') : ''}`,
-    );
     if (result.reachedDailyLimit) {
       burstConfetti({ count: 70 });
       encouragement.value = '太棒了！今天的习惯任务全部完成啦！';

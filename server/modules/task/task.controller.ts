@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { TaskService } from './task.service';
+import { NotificationService } from '../notification/notification.service';
 import { FamilyService } from '../family/family.service';
 import type {
   TaskTemplate,
@@ -25,6 +26,9 @@ import type {
   CreateGoalTaskRequest,
   CreateHabitTaskRequest,
   HabitCheckResponse,
+  HabitCheckinListResponse,
+  HabitCheckinStatus,
+  HabitCheckin,
   UpdateHomeworkTaskRequest,
   SubmitTaskRequest,
   ReviewTaskRequest,
@@ -47,6 +51,7 @@ import {
   IsIn,
   IsArray,
   ArrayNotEmpty,
+  MaxLength,
   IsUUID,
   Min,
 } from 'class-validator';
@@ -284,6 +289,12 @@ class UpdateHomeworkTaskDto implements UpdateHomeworkTaskRequest {
   @IsBoolean()
   @Type(() => Boolean)
   linkedAllowanceGoal?: boolean;
+
+  /** 习惯任务：打卡是否需要家长确认 */
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  habitNeedApproval?: boolean;
 }
 
 class CreateHabitTaskDto implements CreateHabitTaskRequest {
@@ -314,9 +325,25 @@ class CreateHabitTaskDto implements CreateHabitTaskRequest {
   @Type(() => Number)
   dailyLimit?: number;
 
+  /** 打卡是否需要家长确认后才发奖 */
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  needApproval?: boolean;
+
   @IsString()
   @IsNotEmpty()
   taskDate!: string;
+}
+
+class ReviewHabitCheckinDto {
+  @IsBoolean()
+  approved!: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  rejectReason?: string;
 }
 
 class CreateGoalTaskDto implements CreateGoalTaskRequest {
@@ -352,6 +379,12 @@ class CreateGoalTaskDto implements CreateGoalTaskRequest {
   @IsBoolean()
   @Type(() => Boolean)
   linkedAllowanceGoal?: boolean;
+
+  /** 习惯任务：打卡是否需要家长确认 */
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  habitNeedApproval?: boolean;
 
   @IsOptional()
   @IsString()
@@ -397,6 +430,7 @@ export class TaskController {
   constructor(
     private readonly taskService: TaskService,
     private readonly familyService: FamilyService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   /** 校验孩子属于当前登录用户家庭 */
@@ -498,6 +532,22 @@ export class TaskController {
   }
 
   @NeedLogin()
+  /** 家长：习惯打卡待确认列表 */
+  @Get('habit-checkins')
+  async listHabitCheckins(
+    @Req() req: Request,
+    @Query('childId') childId: string,
+    @Query('status') status?: string,
+  ): Promise<HabitCheckinListResponse> {
+    if (!childId) throw new BadRequestException('childId 不能为空');
+    await this.assertChild(req, childId);
+    const items = await this.taskService.listHabitCheckins(
+      childId,
+      (status as HabitCheckinStatus) ?? 'pending',
+    );
+    return { items };
+  }
+
   @Get(':id')
   async getTask(
     @Req() req: Request,
@@ -541,6 +591,24 @@ export class TaskController {
     return { task };
   }
 
+  /** 家长：审核习惯打卡（通过后发放奖励） */
+  @Post('habit-checkins/:id/review')
+  async reviewHabitCheckin(
+    @Req() req: Request,
+    @Param('id') id: string,
+    @Body() dto: ReviewHabitCheckinDto,
+  ): Promise<{ checkin: HabitCheckin }> {
+    const { userId } = req.userContext;
+    const checkin = await this.taskService.reviewHabitCheckin(
+      id,
+      dto.approved,
+      dto.rejectReason,
+      userId,
+    );
+    await this.assertChild(req, checkin.childId);
+    return { checkin };
+  }
+
   /** 习惯任务打卡一次（孩子端） */
   @Post(':id/habit-check')
   async checkHabit(
@@ -549,7 +617,24 @@ export class TaskController {
   ): Promise<HabitCheckResponse> {
     const existing = await this.taskService.getTask(id);
     await this.assertChild(req, existing.childId);
-    return this.taskService.checkHabit(id);
+    const result = await this.taskService.checkHabit(id);
+
+    // 需家长确认的习惯：打一条提醒，家长端铃铛能看到
+    if (result.pendingApproval) {
+      await this.notificationService
+        .create({
+          childId: result.task.childId,
+          type: 'habit_checkin',
+          title: '孩子完成了习惯打卡，待确认',
+          body: `${result.task.name}（第 ${result.count} 次）`,
+          relatedType: 'task',
+          relatedId: result.task.id,
+        })
+        .catch((err: unknown) =>
+          this.logger.warn(`写入提醒失败: ${String(err)}`),
+        );
+    }
+    return result;
   }
 
   @Post(':id/goal-progress')

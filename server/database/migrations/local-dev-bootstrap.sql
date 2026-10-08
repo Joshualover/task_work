@@ -169,6 +169,7 @@ CREATE TABLE IF NOT EXISTS task_instance (
   allowance_amount integer NOT NULL DEFAULT 0,
   linked_allowance_goal boolean NOT NULL DEFAULT false,
   habit_last_date date,
+  habit_need_approval boolean NOT NULL DEFAULT false,
   creator_user_id uuid,
   creator_name varchar(50),
   _created_at timestamptz(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -343,6 +344,29 @@ CREATE INDEX IF NOT EXISTS idx_task_instance_allowance_goal ON task_instance (ch
 
 -- 2026-10-02：习惯任务（按次计算）
 CREATE INDEX IF NOT EXISTS idx_task_instance_habit ON task_instance (child_id, type) WHERE type = 'habit';
+
+-- 2026-10-03：习惯打卡待确认记录
+CREATE TABLE IF NOT EXISTS habit_checkin (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  task_instance_id uuid NOT NULL,
+  child_id uuid NOT NULL,
+  seq integer NOT NULL DEFAULT 1,
+  status varchar(20) NOT NULL DEFAULT 'pending',
+  points integer NOT NULL DEFAULT 0,
+  allowance_amount integer NOT NULL DEFAULT 0,
+  note varchar(200),
+  reject_reason varchar(500),
+  reviewed_at timestamptz(3),
+  reviewed_by uuid,
+  _created_at timestamptz(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  _created_by user_profile DEFAULT (CASE WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL::user_profile END),
+  _updated_at timestamptz(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  _updated_by user_profile DEFAULT (CASE WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL::user_profile END),
+  CONSTRAINT habit_checkin_task_fkey FOREIGN KEY (task_instance_id) REFERENCES task_instance(id) ON DELETE CASCADE,
+  CONSTRAINT habit_checkin_child_fkey FOREIGN KEY (child_id) REFERENCES child(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_habit_checkin_task ON habit_checkin (task_instance_id, _created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_habit_checkin_child_status ON habit_checkin (child_id, status);
 
 -- 2026-09-30：任务可奖励零花钱（非负约束）
 ALTER TABLE task_template DROP CONSTRAINT IF EXISTS chk_task_template_allowance_non_negative;

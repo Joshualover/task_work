@@ -5,6 +5,8 @@ import type {
   TaskTemplate,
   TaskInstance,
   CreateHabitTaskRequest,
+  HabitCheckin,
+  HabitCheckinStatus,
   CreateTaskTemplateRequest,
   UpdateTaskTemplateRequest,
   TaskListQuery,
@@ -14,7 +16,7 @@ import type {
   TaskStatus,
   HomeworkSubtask,
 } from '@shared/api.interface';
-import { taskTemplate, taskInstance, child, pointTransaction, homeworkSubtask, allowanceTransaction } from '@server/database/schema';
+import { taskTemplate, taskInstance, child, pointTransaction, homeworkSubtask, allowanceTransaction, habitCheckin } from '@server/database/schema';
 import { isUniqueViolation } from '@server/common/utils/pg-error';
 import { todayString } from '@server/common/utils/date';
 import { NotificationService } from '../notification/notification.service';
@@ -369,6 +371,17 @@ export class TaskService {
       rows.map((row) => this.mapTaskInstance(row)),
     );
 
+    // 习惯任务：填充待家长确认的打卡数
+    const habitIds = mapped
+      .filter((t) => t.type === 'habit')
+      .map((t) => t.id);
+    if (habitIds.length > 0) {
+      const pendingMap = await this.habitPendingCountMap(habitIds);
+      for (const t of mapped) {
+        if (t.type === 'habit') t.habitPendingCount = pendingMap.get(t.id) ?? 0;
+      }
+    }
+
     // 附带子任务（多项任务）：按 suggestionId 关联 homework_subtask
     const suggestionIds = [
       ...new Set(
@@ -583,8 +596,8 @@ export class TaskService {
     data: UpdateHomeworkTaskRequest,
   ): Promise<TaskInstance> {
     const task = await this.getTask(taskId);
-    if (task.type !== 'homework' && task.type !== 'goal') {
-      throw new BadRequestException('仅作业/目标任务可编辑');
+    if (task.type !== 'homework' && task.type !== 'goal' && task.type !== 'habit') {
+      throw new BadRequestException('仅作业/目标/习惯任务可编辑');
     }
 
     const patch: Partial<typeof taskInstance.$inferInsert> = {};
@@ -599,6 +612,12 @@ export class TaskService {
     }
     if (data.allowanceAmount !== undefined) {
       patch.allowanceAmount = Math.max(0, Math.floor(data.allowanceAmount));
+    }
+    if (data.habitNeedApproval !== undefined) {
+      if (task.type !== 'habit') {
+        throw new BadRequestException('仅习惯任务可设置需家长确认');
+      }
+      patch.habitNeedApproval = data.habitNeedApproval === true;
     }
     if (data.linkedAllowanceGoal !== undefined) {
       if (data.linkedAllowanceGoal && task.type !== 'goal') {
@@ -697,6 +716,7 @@ export class TaskService {
       throw new BadRequestException('请至少设置积分或零花钱奖励');
     }
     const dailyLimit = Math.max(0, Math.floor(Number(data.dailyLimit) || 0));
+    const needApproval = data.needApproval === true;
 
     const [row] = await this.db
       .insert(taskInstance)
@@ -723,6 +743,7 @@ export class TaskService {
         allowanceAmount: allowance,
         linkedAllowanceGoal: false,
         habitLastDate: todayString(),
+        habitNeedApproval: needApproval,
         creatorUserId: creator?.userId ?? null,
         creatorName: creator?.name ?? null,
       })
@@ -744,6 +765,7 @@ export class TaskService {
     awardedAllowance: number;
     count: number;
     reachedDailyLimit: boolean;
+    pendingApproval: boolean;
   }> {
     const task = await this.getTask(taskId);
     if (task.type !== 'habit') {
@@ -784,6 +806,27 @@ export class TaskService {
         0,
         incremented[0].allowanceAmount ?? 0,
       );
+
+      // 需家长确认的习惯：本次只登记待确认记录，审核通过后再发奖
+      if (incremented[0].habitNeedApproval) {
+        await tx.insert(habitCheckin).values({
+          taskInstanceId: taskId,
+          childId: task.childId,
+          seq: count,
+          status: 'pending',
+          points: awardedPoints,
+          allowanceAmount: awardedAllowance,
+        });
+        this.logger.log(`习惯打卡待确认 ${taskId}（${task.name}）第 ${count} 次`);
+        return {
+          task: this.mapTaskInstance(incremented[0]),
+          awardedPoints: 0,
+          awardedAllowance: 0,
+          count,
+          reachedDailyLimit: limit > 0 && count >= limit,
+          pendingApproval: true,
+        };
+      }
 
       // 2) 发积分（原子自增 + 流水）
       if (awardedPoints > 0) {
@@ -838,8 +881,173 @@ export class TaskService {
         awardedAllowance,
         count,
         reachedDailyLimit: limit > 0 && count >= limit,
+        pendingApproval: false,
       };
     });
+  }
+
+  /** 习惯打卡待确认列表（家长端） */
+  async listHabitCheckins(
+    childId: string,
+    status: HabitCheckinStatus = 'pending',
+  ): Promise<HabitCheckin[]> {
+    const rows = await this.db
+      .select({
+        checkin: habitCheckin,
+        taskName: taskInstance.name,
+      })
+      .from(habitCheckin)
+      .innerJoin(taskInstance, eq(habitCheckin.taskInstanceId, taskInstance.id))
+      .where(
+        and(eq(habitCheckin.childId, childId), eq(habitCheckin.status, status)),
+      )
+      .orderBy(habitCheckin.createdAt);
+
+    return rows.map((r) => ({
+      id: r.checkin.id,
+      taskInstanceId: r.checkin.taskInstanceId,
+      childId: r.checkin.childId,
+      taskName: r.taskName,
+      seq: r.checkin.seq,
+      status: r.checkin.status as HabitCheckinStatus,
+      points: r.checkin.points,
+      allowanceAmount: r.checkin.allowanceAmount,
+      note: r.checkin.note ?? null,
+      rejectReason: r.checkin.rejectReason ?? null,
+      reviewedAt: r.checkin.reviewedAt
+        ? r.checkin.reviewedAt.toISOString()
+        : null,
+      createdAt: r.checkin.createdAt.toISOString(),
+    }));
+  }
+
+  /**
+   * 家长审核习惯打卡：通过则发放积分/零花钱；驳回则把该次次数退回。
+   */
+  async reviewHabitCheckin(
+    checkinId: string,
+    approved: boolean,
+    rejectReason?: string,
+    operatorUserId?: string,
+  ): Promise<HabitCheckin> {
+    await this.db.transaction(async (tx) => {
+      // 条件更新防并发重复审核
+      const updated = await tx
+        .update(habitCheckin)
+        .set({
+          status: approved ? 'approved' : 'rejected',
+          rejectReason: approved ? null : rejectReason ?? null,
+          reviewedAt: new Date(),
+          reviewedBy: operatorUserId ?? null,
+        })
+        .where(
+          and(eq(habitCheckin.id, checkinId), eq(habitCheckin.status, 'pending')),
+        )
+        .returning();
+
+      if (updated.length === 0) {
+        throw new ConflictException('该打卡已被处理，请刷新后重试');
+      }
+
+      const checkin = updated[0];
+
+      if (!approved) {
+        // 驳回：退回这次占用的次数
+        await tx
+          .update(taskInstance)
+          .set({
+            currentValue: sql`GREATEST(0, COALESCE(${taskInstance.currentValue}, 0) - 1)`,
+          })
+          .where(eq(taskInstance.id, checkin.taskInstanceId));
+        return;
+      }
+
+      const [taskRow] = await tx
+        .select({ name: taskInstance.name })
+        .from(taskInstance)
+        .where(eq(taskInstance.id, checkin.taskInstanceId))
+        .limit(1);
+      const taskName = taskRow?.name ?? '习惯任务';
+
+      if (checkin.points > 0) {
+        const [childRow] = await tx
+          .update(child)
+          .set({ points: sql`${child.points} + ${checkin.points}` })
+          .where(eq(child.id, checkin.childId))
+          .returning({ points: child.points });
+        if (childRow) {
+          await tx.insert(pointTransaction).values({
+            childId: checkin.childId,
+            changeAmount: checkin.points,
+            balanceAfter: childRow.points,
+            type: 'earn',
+            relatedType: 'task',
+            relatedId: checkin.taskInstanceId,
+            reason: `习惯打卡：${taskName}（第 ${checkin.seq} 次）`,
+            operator: operatorUserId ?? null,
+          });
+        }
+      }
+
+      if (checkin.allowanceAmount > 0) {
+        const [allowanceRow] = await tx
+          .update(child)
+          .set({
+            allowanceBalance: sql`${child.allowanceBalance} + ${checkin.allowanceAmount}`,
+          })
+          .where(eq(child.id, checkin.childId))
+          .returning({ balance: child.allowanceBalance });
+        if (allowanceRow) {
+          await tx.insert(allowanceTransaction).values({
+            childId: checkin.childId,
+            changeAmount: checkin.allowanceAmount,
+            balanceAfter: allowanceRow.balance,
+            type: 'income',
+            relatedType: 'task',
+            relatedId: checkin.taskInstanceId,
+            reason: `习惯打卡：${taskName}（第 ${checkin.seq} 次）`,
+            operator: operatorUserId ?? null,
+          });
+        }
+      }
+
+      this.logger.log(
+        `习惯打卡审核通过 ${checkinId}：+${checkin.points} 积分${
+          checkin.allowanceAmount > 0
+            ? ` +${checkin.allowanceAmount} 分零花钱`
+            : ''
+        }`,
+      );
+    });
+
+    const [row] = await this.db
+      .select()
+      .from(habitCheckin)
+      .where(eq(habitCheckin.id, checkinId))
+      .limit(1);
+    const items = await this.listHabitCheckins(row.childId, row.status as HabitCheckinStatus);
+    return items.find((i) => i.id === checkinId) as HabitCheckin;
+  }
+
+  /** 习惯任务待确认打卡数（按任务聚合，供家长端卡片展示） */
+  private async habitPendingCountMap(
+    taskIds: string[],
+  ): Promise<Map<string, number>> {
+    if (taskIds.length === 0) return new Map();
+    const rows = await this.db
+      .select({
+        taskInstanceId: habitCheckin.taskInstanceId,
+        count: count(),
+      })
+      .from(habitCheckin)
+      .where(
+        and(
+          inArray(habitCheckin.taskInstanceId, taskIds),
+          eq(habitCheckin.status, 'pending'),
+        ),
+      )
+      .groupBy(habitCheckin.taskInstanceId);
+    return new Map(rows.map((r) => [r.taskInstanceId, Number(r.count)]));
   }
 
   /**
@@ -1354,6 +1562,8 @@ export class TaskService {
       habitDailyLimit: row.type === 'habit' ? row.targetValue ?? 0 : 0,
       habitPointsPerTime: row.type === 'habit' ? row.points : 0,
       habitAllowancePerTime: row.type === 'habit' ? row.allowanceAmount ?? 0 : 0,
+      habitNeedApproval: row.type === 'habit' ? row.habitNeedApproval ?? false : false,
+      habitPendingCount: 0,
       creatorUserId: row.creatorUserId ?? null,
       creatorName: row.creatorName ?? null,
       createdAt: row.createdAt.toISOString(),

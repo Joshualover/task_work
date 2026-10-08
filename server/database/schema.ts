@@ -380,6 +380,8 @@ export const taskInstance = pgTable("task_instance", {
   linkedAllowanceGoal: boolean("linked_allowance_goal").notNull().default(false),
   // 习惯任务：今日次数所属日期（跨天自动归零）
   habitLastDate: date("habit_last_date"),
+  // 习惯任务：打卡是否需要家长确认后才发奖
+  habitNeedApproval: boolean("habit_need_approval").notNull().default(false),
   // 布置任务的家长（哪个管理员创建的）：id + 昵称快照
   creatorUserId: uuid("creator_user_id"),
   creatorName: varchar("creator_name", { length: 50 }),
@@ -652,4 +654,35 @@ export const pointTransactionTable = pointTransaction;
 export const redemptionTable = redemption;
 export const rewardTable = reward;
 export const taskInstanceTable = taskInstance;
+export const habitCheckin = pgTable("habit_checkin", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  taskInstanceId: uuid("task_instance_id").notNull(),
+  childId: uuid("child_id").notNull(),
+  seq: integer("seq").notNull().default(1),
+  // pending | approved | rejected
+  status: varchar("status", { length: 20 }).notNull().default('pending'),
+  // 奖励快照（打卡时的配置）
+  points: integer("points").notNull().default(0),
+  allowanceAmount: integer("allowance_amount").notNull().default(0),
+  note: varchar("note", { length: 200 }),
+  rejectReason: varchar("reject_reason", { length: 500 }),
+  reviewedAt: customTimestamptz("reviewed_at", { precision: 3 }),
+  reviewedBy: uuid("reviewed_by"),
+  // System field: Creation time (auto-filled, do not modify)
+  createdAt: customTimestamptz("_created_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  // System field: Creator (auto-filled, do not modify)
+  createdBy: userProfile("_created_by").default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+  // System field: Update time (auto-filled, do not modify)
+  updatedAt: customTimestamptz("_updated_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  // System field: Updater (auto-filled, do not modify)
+  updatedBy: userProfile("_updated_by").default(sql`CASE
+    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
+}, (table) => [
+  index("idx_habit_checkin_task").on(table.taskInstanceId, table.createdAt),
+  index("idx_habit_checkin_child_status").on(table.childId, table.status),
+]);
+
+export const habitCheckinTable = habitCheckin;
+
 export const taskTemplateTable = taskTemplate;

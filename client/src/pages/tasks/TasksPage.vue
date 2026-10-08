@@ -4,7 +4,7 @@ import { logger } from '@lark-apaas/client-toolkit/logger';
 import {
   Plus, Clock, CheckCircle, XCircle, AlertCircle, BookOpen, Star,
   Trash2, Sparkles, Upload, FileText, X, Image as ImageIcon,
-  ChevronDown, ChevronUp, Edit3, CheckCircle2, Circle, User,
+  ChevronDown, ChevronUp, Edit3, CheckCircle2, Circle, User, Repeat,
 } from 'lucide-vue-next';
 import Button from '@/components/ui/Button.vue';
 import Dialog from '@/components/ui/Dialog.vue';
@@ -26,6 +26,7 @@ import { toast } from '@/components/ui/toast';
 import { getErrorMessage } from '@/utils/error';
 import type {
   TaskInstance,
+  HabitCheckin,
   TaskStatus,
   CreateHomeworkTaskRequest,
   HomeworkSuggestion,
@@ -78,6 +79,8 @@ interface FormData {
   linkedAllowanceGoal: boolean;
   /** 习惯任务：每日次数上限（0=不限） */
   habitDailyLimit: number;
+  /** 习惯任务：打卡是否需要家长确认 */
+  habitNeedApproval: boolean;
 }
 
 interface SubtaskFormItem {
@@ -247,6 +250,7 @@ const fetchTasks = async (silent = false): Promise<void> => {
     });
     if (!isLatest()) return;
     tasks.value = result.items;
+    void fetchHabitCheckins();
   } catch (error) {
     logger.error('获取任务列表失败', error);
   } finally {
@@ -400,6 +404,7 @@ const handleCreateHomework = async (): Promise<void> => {
           points: formData.points,
           allowanceAmount: yuanToFen(formData.allowanceYuan || 0),
           targetValue: formData.habitDailyLimit > 0 ? formData.habitDailyLimit : null,
+          habitNeedApproval: formData.habitNeedApproval,
         });
       } else {
         await taskApi.createHabitTask({
@@ -408,6 +413,7 @@ const handleCreateHomework = async (): Promise<void> => {
           points: formData.points,
           allowanceAmount: yuanToFen(formData.allowanceYuan || 0),
           dailyLimit: formData.habitDailyLimit,
+          needApproval: formData.habitNeedApproval,
           taskDate: formData.taskDate || today.value,
         });
       }
@@ -567,6 +573,7 @@ const resetForm = (): void => {
   formData.unit = '个';
   formData.linkedAllowanceGoal = false;
   formData.habitDailyLimit = 3;
+  formData.habitNeedApproval = false;
   formSubtasks.splice(0, formSubtasks.length);
   isEditMode.value = false;
   editingSuggestionId.value = '';
@@ -586,6 +593,7 @@ const openEditTask = (task: TaskInstance): void => {
   formData.unit = task.unit ?? '个';
   formData.linkedAllowanceGoal = task.linkedAllowanceGoal === true;
   formData.habitDailyLimit = task.habitDailyLimit ?? 3;
+  formData.habitNeedApproval = task.habitNeedApproval === true;
   formData.name = task.name;
   formData.subject = task.subject ?? '';
   formData.points = task.points;
@@ -660,6 +668,89 @@ const handleReject = async (taskId: string): Promise<void> => {
   } catch (error) {
     logger.error('审核驳回失败', error);
     toast.error('操作失败，请重试');
+  }
+};
+
+// ==================== 习惯打卡待确认 ====================
+const habitCheckins = ref<HabitCheckin[]>([]);
+const habitReviewing = ref<boolean>(false);
+
+/** 相对时间：今天显示 HH:mm，否则 M/D HH:mm */
+const formatCheckinTime = (iso: string): string => {
+  const d = new Date(iso);
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  const sameDay = todayString() === `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return sameDay ? `${hh}:${mm}` : `${d.getMonth() + 1}/${d.getDate()} ${hh}:${mm}`;
+};
+
+const fetchHabitCheckins = async (): Promise<void> => {
+  if (!currentChildId.value) {
+    habitCheckins.value = [];
+    return;
+  }
+  try {
+    const result = await taskApi.listHabitCheckins(currentChildId.value, 'pending');
+    habitCheckins.value = result.items;
+  } catch (error) {
+    logger.error('获取习惯打卡待确认失败', error);
+  }
+};
+
+const handleApproveHabitCheckin = async (checkin: HabitCheckin): Promise<void> => {
+  if (habitReviewing.value) return;
+  habitReviewing.value = true;
+  try {
+    await taskApi.reviewHabitCheckin(checkin.id, { approved: true });
+    toast.success('已通过并发放奖励');
+    await fetchHabitCheckins();
+    await fetchTasks(true);
+  } catch (error) {
+    logger.error('审核习惯打卡失败', error);
+    toast.error(getErrorMessage(error, '操作失败，请重试'));
+  } finally {
+    habitReviewing.value = false;
+  }
+};
+
+const handleRejectHabitCheckin = async (checkin: HabitCheckin): Promise<void> => {
+  if (habitReviewing.value) return;
+  habitReviewing.value = true;
+  try {
+    await taskApi.reviewHabitCheckin(checkin.id, {
+      approved: false,
+      rejectReason: '家长未确认',
+    });
+    toast.info('已驳回，次数已退回');
+    await fetchHabitCheckins();
+    await fetchTasks(true);
+  } catch (error) {
+    logger.error('驳回习惯打卡失败', error);
+    toast.error(getErrorMessage(error, '操作失败，请重试'));
+  } finally {
+    habitReviewing.value = false;
+  }
+};
+
+const handleApproveAllHabitCheckins = async (): Promise<void> => {
+  if (habitReviewing.value || habitCheckins.value.length === 0) return;
+  habitReviewing.value = true;
+  try {
+    const ids = habitCheckins.value.map((c) => c.id);
+    let okCount = 0;
+    for (const id of ids) {
+      try {
+        await taskApi.reviewHabitCheckin(id, { approved: true });
+        okCount += 1;
+      } catch (error) {
+        logger.warn(`习惯打卡 ${id} 审核失败`, error as Error);
+      }
+    }
+    toast.success(`已通过 ${okCount} 条习惯打卡`);
+    await fetchHabitCheckins();
+    await fetchTasks(true);
+  } finally {
+    habitReviewing.value = false;
   }
 };
 
@@ -1104,6 +1195,13 @@ const removeImage = (index: number): void => {
                   task.habitDailyLimit > 0 ? task.habitDailyLimit : '∞'
                 }} 次
               </Badge>
+              <Badge
+                v-if="task.type === 'habit' && task.habitNeedApproval"
+                variant="outline"
+                class="rounded-full border-orange-200 text-[#FF8A3D]"
+              >
+                需确认{{ (task.habitPendingCount ?? 0) > 0 ? ` · 待审 ${task.habitPendingCount}` : '' }}
+              </Badge>
               <span v-if="task.deadline" class="flex items-center gap-1 text-xs text-gray-400">
                 <Clock class="h-3 w-3" />
                 截止 {{ task.deadline }}
@@ -1188,6 +1286,83 @@ const removeImage = (index: number): void => {
               >
                 <CheckCircle class="h-4 w-4" />
                 {{ isSubmittingTask(task.id) ? '提交中...' : '提交完成' }}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 习惯打卡待确认 -->
+      <section v-if="habitCheckins.length > 0">
+        <div class="mb-3 flex items-center gap-2">
+          <Repeat class="h-5 w-5 text-teal-500" />
+          <span class="text-sm font-semibold text-[#1F2329]">习惯打卡待确认</span>
+          <span class="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">
+            {{ habitCheckins.length }}
+          </span>
+          <button
+            v-if="habitCheckins.length > 1"
+            type="button"
+            class="ml-auto rounded-full bg-[#52C41A] px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-[#45A91A] disabled:opacity-50"
+            :disabled="habitReviewing"
+            @click="void handleApproveAllHabitCheckins()"
+          >
+            {{ habitReviewing ? '处理中...' : `全部通过 (${habitCheckins.length})` }}
+          </button>
+        </div>
+        <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <div
+            v-for="checkin in habitCheckins"
+            :key="checkin.id"
+            class="rounded-2xl bg-white p-4 shadow-md transition-shadow hover:shadow-lg"
+          >
+            <div class="flex items-start justify-between">
+              <div class="flex min-w-0 items-center gap-2">
+                <Repeat class="h-5 w-5 shrink-0 text-teal-500" />
+                <h3 class="truncate text-base font-semibold text-[#1F2329]">
+                  {{ checkin.taskName }}
+                </h3>
+              </div>
+              <span class="shrink-0 text-xs text-gray-400">
+                第 {{ checkin.seq }} 次
+              </span>
+            </div>
+            <div class="mt-2 flex flex-wrap items-center gap-2">
+              <Badge
+                v-if="checkin.points > 0"
+                variant="default"
+                class="rounded-full bg-orange-100 text-[#FF8A3D] border-transparent"
+              >
+                +{{ checkin.points }} 积分
+              </Badge>
+              <Badge
+                v-if="checkin.allowanceAmount > 0"
+                variant="default"
+                class="rounded-full bg-green-100 text-[#52C41A] border-transparent"
+              >
+                +{{ fenToYuan(checkin.allowanceAmount) }} 元零花钱
+              </Badge>
+              <span class="text-xs text-gray-400">
+                {{ formatCheckinTime(checkin.createdAt) }}
+              </span>
+            </div>
+            <div class="mt-3 flex gap-2 border-t border-gray-100 pt-3">
+              <Button
+                size="sm"
+                variant="outline"
+                class="flex-1 rounded-full"
+                :disabled="habitReviewing"
+                @click="void handleRejectHabitCheckin(checkin)"
+              >
+                驳回
+              </Button>
+              <Button
+                size="sm"
+                class="flex-1 rounded-full bg-[#52C41A] text-white hover:bg-[#45A91A]"
+                :disabled="habitReviewing"
+                @click="void handleApproveHabitCheckin(checkin)"
+              >
+                通过
               </Button>
             </div>
           </div>
@@ -1306,6 +1481,13 @@ const removeImage = (index: number): void => {
                 习惯 · 今日 {{ task.habitCount ?? 0 }}/{{
                   task.habitDailyLimit > 0 ? task.habitDailyLimit : '∞'
                 }} 次
+              </Badge>
+              <Badge
+                v-if="task.type === 'habit' && task.habitNeedApproval"
+                variant="outline"
+                class="rounded-full border-orange-200 text-[#FF8A3D]"
+              >
+                需确认{{ (task.habitPendingCount ?? 0) > 0 ? ` · 待审 ${task.habitPendingCount}` : '' }}
               </Badge>
               <span v-if="task.deadline" class="flex items-center gap-1 text-xs text-gray-400">
                 <Clock class="h-3 w-3" />
@@ -1509,6 +1691,13 @@ const removeImage = (index: number): void => {
                   task.habitDailyLimit > 0 ? task.habitDailyLimit : '∞'
                 }} 次
               </Badge>
+              <Badge
+                v-if="task.type === 'habit' && task.habitNeedApproval"
+                variant="outline"
+                class="rounded-full border-orange-200 text-[#FF8A3D]"
+              >
+                需确认{{ (task.habitPendingCount ?? 0) > 0 ? ` · 待审 ${task.habitPendingCount}` : '' }}
+              </Badge>
               <span v-if="task.deadline" class="flex items-center gap-1 text-xs text-gray-400">
                 <Clock class="h-3 w-3" />
                 截止 {{ task.deadline }}
@@ -1703,6 +1892,13 @@ const removeImage = (index: number): void => {
                   task.habitDailyLimit > 0 ? task.habitDailyLimit : '∞'
                 }} 次
               </Badge>
+              <Badge
+                v-if="task.type === 'habit' && task.habitNeedApproval"
+                variant="outline"
+                class="rounded-full border-orange-200 text-[#FF8A3D]"
+              >
+                需确认{{ (task.habitPendingCount ?? 0) > 0 ? ` · 待审 ${task.habitPendingCount}` : '' }}
+              </Badge>
               <span v-if="task.deadline" class="flex items-center gap-1 text-xs text-gray-400">
                 <Clock class="h-3 w-3" />
                 截止 {{ task.deadline }}
@@ -1886,6 +2082,13 @@ const removeImage = (index: number): void => {
                 习惯 · 今日 {{ task.habitCount ?? 0 }}/{{
                   task.habitDailyLimit > 0 ? task.habitDailyLimit : '∞'
                 }} 次
+              </Badge>
+              <Badge
+                v-if="task.type === 'habit' && task.habitNeedApproval"
+                variant="outline"
+                class="rounded-full border-orange-200 text-[#FF8A3D]"
+              >
+                需确认{{ (task.habitPendingCount ?? 0) > 0 ? ` · 待审 ${task.habitPendingCount}` : '' }}
               </Badge>
               <span v-if="task.deadline" class="flex items-center gap-1 text-xs text-gray-400">
                 <Clock class="h-3 w-3" />
@@ -2112,6 +2315,18 @@ const removeImage = (index: number): void => {
           <p class="text-xs text-gray-400">
             下面填写的是<strong>每次</strong>完成的奖励；上限用于防止重复点按
           </p>
+          <label class="flex cursor-pointer items-start gap-3 rounded-xl bg-orange-50 p-3">
+            <Switch
+              :modelValue="formData.habitNeedApproval"
+              @update:modelValue="(v: boolean) => (formData.habitNeedApproval = v)"
+            />
+            <span class="text-sm">
+              <span class="font-medium text-[#1F2329]">需家长确认</span>
+              <span class="mt-0.5 block text-xs text-gray-500">
+                打开后：孩子打卡只是提交申请，家长在「待确认」里通过后才发放奖励（适合「自己做一顿饭」这类需要确认的习惯）
+              </span>
+            </span>
+          </label>
         </div>
 
         <div class="space-y-2">

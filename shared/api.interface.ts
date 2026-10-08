@@ -76,6 +76,10 @@ export interface TaskInstance {
   habitPointsPerTime: number;
   /** 习惯任务：每次奖励零花钱（分） */
   habitAllowancePerTime: number;
+  /** 习惯任务：打卡是否需要家长确认后才发奖 */
+  habitNeedApproval: boolean;
+  /** 习惯任务：待家长确认的打卡数 */
+  habitPendingCount: number;
   /** 布置该任务的家长账号 id */
   creatorUserId: string | null;
   /** 布置该任务的家长昵称（孩子端展示「XX 布置」） */
@@ -310,6 +314,8 @@ export interface UpdateHomeworkTaskRequest {
   allowanceAmount?: number;
   /** 目标型任务：进度跟随零花钱余额 */
   linkedAllowanceGoal?: boolean;
+  /** 习惯任务：打卡是否需要家长确认 */
+  habitNeedApproval?: boolean;
   deadline?: string | null;
   extendDays?: number;
   taskDate?: string;
@@ -347,7 +353,31 @@ export interface CreateHabitTaskRequest {
   allowanceAmount?: number;
   /** 每日次数上限，0/不填=不限 */
   dailyLimit?: number;
+  /** 打卡是否需要家长确认后才发奖 */
+  needApproval?: boolean;
   taskDate: string;
+}
+
+/** 习惯打卡记录 */
+export type HabitCheckinStatus = 'pending' | 'approved' | 'rejected';
+
+export interface HabitCheckin {
+  id: string;
+  taskInstanceId: string;
+  childId: string;
+  taskName: string;
+  seq: number;
+  status: HabitCheckinStatus;
+  points: number;
+  allowanceAmount: number;
+  note: string | null;
+  rejectReason: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+}
+
+export interface HabitCheckinListResponse {
+  items: HabitCheckin[];
 }
 
 /** 习惯任务打卡结果 */
@@ -361,6 +391,8 @@ export interface HabitCheckResponse {
   count: number;
   /** 是否已达到每日上限 */
   reachedDailyLimit: boolean;
+  /** 是否已提交等待家长确认（需确认的习惯任务） */
+  pendingApproval: boolean;
 }
 
 /** 目标型任务记录进度 */

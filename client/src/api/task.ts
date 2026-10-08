@@ -10,6 +10,8 @@ import type {
   CreateGoalTaskRequest,
   CreateHabitTaskRequest,
   HabitCheckResponse,
+  HabitCheckinListResponse,
+  HabitCheckin,
   UpdateHomeworkTaskRequest,
   SubmitTaskRequest,
   ReviewTaskRequest,
@@ -128,6 +130,30 @@ export async function checkHabit(id: string): Promise<HabitCheckResponse> {
   const response = await apiClient.post<HabitCheckResponse>(
     `/api/tasks/${id}/habit-check`,
     {},
+  );
+  return response.data;
+}
+
+/** 家长：习惯打卡待确认列表 */
+export async function listHabitCheckins(
+  childId: string,
+  status = 'pending',
+): Promise<HabitCheckinListResponse> {
+  const response = await apiClient.get<HabitCheckinListResponse>(
+    '/api/tasks/habit-checkins',
+    { params: { childId, status } },
+  );
+  return response.data;
+}
+
+/** 家长：审核习惯打卡 */
+export async function reviewHabitCheckin(
+  id: string,
+  data: { approved: boolean; rejectReason?: string },
+): Promise<{ checkin: HabitCheckin }> {
+  const response = await apiClient.post<{ checkin: HabitCheckin }>(
+    `/api/tasks/habit-checkins/${id}/review`,
+    data,
   );
   return response.data;
 }
