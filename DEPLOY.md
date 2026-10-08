@@ -315,6 +315,7 @@ psql "$DATABASE_URL" -f server/database/migrations/2026-09-21_late_submit.sql
 psql "$DATABASE_URL" -f server/database/migrations/2026-09-22_task_creator.sql
 psql "$DATABASE_URL" -f server/database/migrations/2026-09-30_task_allowance_reward.sql
 psql "$DATABASE_URL" -f server/database/migrations/2026-10-01_allowance_goal.sql
+psql "$DATABASE_URL" -f server/database/migrations/2026-10-02_habit_task.sql
 psql "$DATABASE_URL" -f server/database/migrations/2026-09-29_add_balance_checks_and_indexes.sql
 
 npm install --ignore-scripts

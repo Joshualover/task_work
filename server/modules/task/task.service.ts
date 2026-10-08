@@ -4,6 +4,7 @@ import { eq, and, asc, count, lt, ne, inArray, sql, gte, lte, or } from 'drizzle
 import type {
   TaskTemplate,
   TaskInstance,
+  CreateHabitTaskRequest,
   CreateTaskTemplateRequest,
   UpdateTaskTemplateRequest,
   TaskListQuery,
@@ -305,6 +306,11 @@ export class TaskService {
       this.logger.warn(`同步零花钱目标失败: ${String(err)}`);
     });
 
+    // 习惯任务：跨天自动把「今日次数」归零
+    await this.syncHabitDaily(params.childId).catch((err: unknown) => {
+      this.logger.warn(`同步习惯任务失败: ${String(err)}`);
+    });
+
     const conditions = [eq(taskInstance.childId, params.childId)];
 
     if (params.date) {
@@ -314,6 +320,11 @@ export class TaskService {
       conditions.push(
         or(
           eq(taskInstance.taskDate, params.date),
+          // 目标 / 习惯任务常驻显示（不限时间，跨天可见）
+          and(
+            inArray(taskInstance.type, ['goal', 'habit']),
+            inArray(taskInstance.status, ['pending', 'submitted', 'overdue']),
+          ),
           and(
             lt(taskInstance.taskDate, params.date),
             inArray(taskInstance.status, ['pending', 'submitted', 'overdue']),
@@ -327,7 +338,7 @@ export class TaskService {
         or(
           ne(taskInstance.status, 'overdue'),
           sql`(
-            case when ${taskInstance.type} = 'daily'
+            case when ${taskInstance.type} in ('daily', 'habit')
               then ${taskInstance.taskDate}
               else coalesce(${taskInstance.deadline}, ${taskInstance.taskDate})
             end
@@ -405,6 +416,11 @@ export class TaskService {
       conditions.push(
         or(
           eq(taskInstance.taskDate, params.date),
+          // 目标 / 习惯任务常驻显示（不限时间，跨天可见）
+          and(
+            inArray(taskInstance.type, ['goal', 'habit']),
+            inArray(taskInstance.status, ['pending', 'submitted', 'overdue']),
+          ),
           and(
             lt(taskInstance.taskDate, params.date),
             inArray(taskInstance.status, ['pending', 'submitted', 'overdue']),
@@ -418,7 +434,7 @@ export class TaskService {
         or(
           ne(taskInstance.status, 'overdue'),
           sql`(
-            case when ${taskInstance.type} = 'daily'
+            case when ${taskInstance.type} in ('daily', 'habit')
               then ${taskInstance.taskDate}
               else coalesce(${taskInstance.deadline}, ${taskInstance.taskDate})
             end
@@ -663,6 +679,198 @@ export class TaskService {
 
     this.logger.log(`创建目标任务: ${row.id}, ${data.name} 目标 ${target}`);
     return this.mapTaskInstance(row);
+  }
+
+  /**
+   * 新建习惯任务（按次计算）：每完成一次立刻发放积分/零花钱，每天次数自动归零。
+   */
+  async createHabitTask(
+    data: CreateHabitTaskRequest,
+    creator?: TaskCreator,
+  ): Promise<TaskInstance> {
+    if (!data.name || !data.name.trim()) {
+      throw new BadRequestException('任务名称不能为空');
+    }
+    const points = Math.max(0, Math.floor(Number(data.points) || 0));
+    const allowance = Math.max(0, Math.floor(Number(data.allowanceAmount) || 0));
+    if (points === 0 && allowance === 0) {
+      throw new BadRequestException('请至少设置积分或零花钱奖励');
+    }
+    const dailyLimit = Math.max(0, Math.floor(Number(data.dailyLimit) || 0));
+
+    const [row] = await this.db
+      .insert(taskInstance)
+      .values({
+        childId: data.childId,
+        taskTemplateId: null,
+        type: 'habit',
+        name: data.name.trim(),
+        subject: null,
+        points,
+        difficultyMultiplier: '1.0',
+        finalPoints: null,
+        // 习惯任务：targetValue = 每日次数上限
+        targetValue: dailyLimit > 0 ? dailyLimit : null,
+        currentValue: 0,
+        unit: '次',
+        deadline: null,
+        extendDays: 0,
+        taskDate: data.taskDate,
+        status: 'pending',
+        submitTime: null,
+        rejectReason: null,
+        completionNote: null,
+        allowanceAmount: allowance,
+        linkedAllowanceGoal: false,
+        habitLastDate: todayString(),
+        creatorUserId: creator?.userId ?? null,
+        creatorName: creator?.name ?? null,
+      })
+      .returning();
+
+    this.logger.log(
+      `创建习惯任务: ${row.id}, ${data.name} 每次 ${points} 积分`,
+    );
+    return this.mapTaskInstance(row);
+  }
+
+  /**
+   * 习惯任务打卡一次：次数 +1，并立刻发放积分 / 零花钱（同一事务，原子操作）。
+   * 达到每日上限后拒绝继续打卡。
+   */
+  async checkHabit(taskId: string): Promise<{
+    task: TaskInstance;
+    awardedPoints: number;
+    awardedAllowance: number;
+    count: number;
+    reachedDailyLimit: boolean;
+  }> {
+    const task = await this.getTask(taskId);
+    if (task.type !== 'habit') {
+      throw new BadRequestException('仅习惯任务可打卡');
+    }
+    const today = todayString();
+    const limit = task.habitDailyLimit ?? 0;
+
+    return this.db.transaction(async (tx) => {
+      // 1) 次数 +1（跨天先归零）；带上限条件避免超打
+      const resetExpr = sql`case when ${taskInstance.habitLastDate} is distinct from ${today}::date then 0 else coalesce(${taskInstance.currentValue}, 0) end`;
+      const incremented = await tx
+        .update(taskInstance)
+        .set({
+          currentValue: sql`${resetExpr} + 1`,
+          habitLastDate: sql`${today}::date`,
+        })
+        .where(
+          and(
+            eq(taskInstance.id, taskId),
+            eq(taskInstance.type, 'habit'),
+            limit > 0 ? sql`${resetExpr} < ${limit}` : sql`true`,
+          ),
+        )
+        .returning();
+
+      if (incremented.length === 0) {
+        throw new ConflictException(
+          limit > 0
+            ? `今日已完成 ${limit} 次，达到上限啦`
+            : '打卡失败，请刷新后重试',
+        );
+      }
+
+      const count = incremented[0].currentValue ?? 0;
+      const awardedPoints = Math.max(0, incremented[0].points ?? 0);
+      const awardedAllowance = Math.max(
+        0,
+        incremented[0].allowanceAmount ?? 0,
+      );
+
+      // 2) 发积分（原子自增 + 流水）
+      if (awardedPoints > 0) {
+        const [childRow] = await tx
+          .update(child)
+          .set({ points: sql`${child.points} + ${awardedPoints}` })
+          .where(eq(child.id, task.childId))
+          .returning({ points: child.points });
+        if (childRow) {
+          await tx.insert(pointTransaction).values({
+            childId: task.childId,
+            changeAmount: awardedPoints,
+            balanceAfter: childRow.points,
+            type: 'earn',
+            relatedType: 'task',
+            relatedId: taskId,
+            reason: `习惯打卡：${task.name}（第 ${count} 次）`,
+          });
+        }
+      }
+
+      // 3) 发零花钱（原子自增 + 流水）
+      if (awardedAllowance > 0) {
+        const [allowanceRow] = await tx
+          .update(child)
+          .set({
+            allowanceBalance: sql`${child.allowanceBalance} + ${awardedAllowance}`,
+          })
+          .where(eq(child.id, task.childId))
+          .returning({ balance: child.allowanceBalance });
+        if (allowanceRow) {
+          await tx.insert(allowanceTransaction).values({
+            childId: task.childId,
+            changeAmount: awardedAllowance,
+            balanceAfter: allowanceRow.balance,
+            type: 'income',
+            relatedType: 'task',
+            relatedId: taskId,
+            reason: `习惯打卡：${task.name}（第 ${count} 次）`,
+          });
+        }
+      }
+
+      this.logger.log(
+        `习惯打卡 ${taskId}（${task.name}）第 ${count} 次，+${awardedPoints} 积分${
+          awardedAllowance > 0 ? ` +${awardedAllowance} 分零花钱` : ''
+        }`,
+      );
+      return {
+        task: this.mapTaskInstance(incremented[0]),
+        awardedPoints,
+        awardedAllowance,
+        count,
+        reachedDailyLimit: limit > 0 && count >= limit,
+      };
+    });
+  }
+
+  /**
+   * 习惯任务跨天归零：把非今天的次数重置为 0。
+   * 与逾期标记一样在读取列表时惰性执行。
+   */
+  async syncHabitDaily(childId: string): Promise<number> {
+    const today = todayString();
+    const rows = await this.db
+      .select({ id: taskInstance.id })
+      .from(taskInstance)
+      .where(
+        and(
+          eq(taskInstance.childId, childId),
+          eq(taskInstance.type, 'habit'),
+          sql`(${taskInstance.habitLastDate} is null or ${taskInstance.habitLastDate} <> ${today}::date)`,
+        ),
+      );
+    if (rows.length === 0) return 0;
+
+    await this.db
+      .update(taskInstance)
+      .set({ currentValue: 0, habitLastDate: today })
+      .where(
+        inArray(
+          taskInstance.id,
+          rows.map((r) => r.id),
+        ),
+      );
+    this.logger.log(`习惯任务跨天归零 ${rows.length} 个`);
+    return rows.length;
   }
 
   /**
@@ -1137,6 +1345,15 @@ export class TaskService {
       isLateSubmit: row.isLateSubmit ?? false,
       allowanceAmount: row.allowanceAmount ?? 0,
       linkedAllowanceGoal: row.linkedAllowanceGoal ?? false,
+      habitCount:
+        row.type === 'habit'
+          ? row.habitLastDate && String(row.habitLastDate) === todayString()
+            ? row.currentValue ?? 0
+            : 0
+          : 0,
+      habitDailyLimit: row.type === 'habit' ? row.targetValue ?? 0 : 0,
+      habitPointsPerTime: row.type === 'habit' ? row.points : 0,
+      habitAllowancePerTime: row.type === 'habit' ? row.allowanceAmount ?? 0 : 0,
       creatorUserId: row.creatorUserId ?? null,
       creatorName: row.creatorName ?? null,
       createdAt: row.createdAt.toISOString(),

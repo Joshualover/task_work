@@ -28,6 +28,8 @@ const CHILD_ALLOWED: Array<{ method: string; re: RegExp }> = [
   { method: 'POST', re: /^\/api\/tasks\/batch-submit$/ },
   // 目标型任务：记录进度
   { method: 'POST', re: /^\/api\/tasks\/[^/]+\/goal-progress$/ },
+  // 习惯任务：打卡一次
+  { method: 'POST', re: /^\/api\/tasks\/[^/]+\/habit-check$/ },
   // 积分：仅查看
   { method: 'GET', re: /^\/api\/points\/(balance|transactions)$/ },
   { method: 'GET', re: /^\/api\/points\/transactions\/[^/]+$/ },

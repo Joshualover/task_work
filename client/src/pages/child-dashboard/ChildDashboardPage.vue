@@ -190,7 +190,13 @@
                         : 'bg-blue-100 text-blue-600',
                     ]"
                   >
-                    {{ task.type === 'daily' ? '必要任务' : '作业任务' }}
+                    {{
+                      task.type === 'daily'
+                        ? '必要任务'
+                        : task.type === 'habit'
+                          ? '习惯任务'
+                          : '作业任务'
+                    }}
                   </span>
                   <span
                     :class="[
@@ -343,8 +349,45 @@
                     记录进度
                   </button>
                 </template>
+                <!-- 习惯任务：打卡一次 -->
+                <template v-if="task.type === 'habit'">
+                  <div class="text-right text-xs text-teal-600">
+                    今日 {{ task.habitCount ?? 0 }}/{{
+                      task.habitDailyLimit > 0 ? task.habitDailyLimit : '∞'
+                    }} 次
+                  </div>
+                  <button
+                    type="button"
+                    class="flex items-center gap-1 rounded-full bg-gradient-to-r from-[#36BFFA] to-[#52C41A] px-4 py-1.5 text-sm font-medium text-white shadow-md transition-all active:scale-95 disabled:opacity-50"
+                    :disabled="
+                      habitCheckingId === task.id ||
+                      (task.habitDailyLimit > 0 &&
+                        (task.habitCount ?? 0) >= task.habitDailyLimit)
+                    "
+                    @click="void handleHabitCheck(task)"
+                  >
+                    <Check class="h-4 w-4" />
+                    {{
+                      task.habitDailyLimit > 0 &&
+                      (task.habitCount ?? 0) >= task.habitDailyLimit
+                        ? '今日已完成'
+                        : habitCheckingId === task.id
+                          ? '打卡中...'
+                          : '完成一次'
+                    }}
+                  </button>
+                  <div class="text-right text-xs text-gray-400">
+                    每次 +{{ task.habitPointsPerTime }} 积分
+                    <span
+                      v-if="(task.habitAllowancePerTime ?? 0) > 0"
+                      class="text-[#52C41A]"
+                    >
+                      · +{{ fenToYuan(task.habitAllowancePerTime) }} 元
+                    </span>
+                  </div>
+                </template>
                 <button
-                  v-if="(task.status === 'pending' || task.status === 'overdue') && task.type !== 'goal'"
+                  v-if="(task.status === 'pending' || task.status === 'overdue') && task.type !== 'goal' && task.type !== 'habit'"
                   type="button"
                   @click="handleSubmitClick(task)"
                   :disabled="hasSubtasks(task.id) && !allSubtasksCompleted(task.id)"
@@ -636,6 +679,45 @@ const lateSubmitDeadline = (task: TaskInstance): string => {
 
 const canToggleSubtask = (task: TaskInstance): boolean =>
   task.status === 'pending' || task.status === 'overdue';
+
+// 习惯任务：打卡中状态
+const habitCheckingId = ref<string | null>(null);
+
+/**
+ * 习惯任务打卡一次：立即发放积分/零花钱，达到每日上限时撒花庆祝。
+ */
+async function handleHabitCheck(task: TaskInstance): Promise<void> {
+  if (habitCheckingId.value) return;
+  habitCheckingId.value = task.id;
+  try {
+    const result = await taskApi.checkHabit(task.id);
+    const parts: string[] = [];
+    if (result.awardedPoints > 0) parts.push(`+${result.awardedPoints} 积分`);
+    if (result.awardedAllowance > 0) {
+      parts.push(`+${fenToYuan(result.awardedAllowance)} 元零花钱`);
+    }
+    toast.success(
+      `打卡成功（第 ${result.count} 次）${parts.length ? '：' + parts.join('、') : ''}`,
+    );
+    if (result.reachedDailyLimit) {
+      burstConfetti({ count: 70 });
+      encouragement.value = '太棒了！今天的习惯任务全部完成啦！';
+      showSuccess.value = true;
+      setTimeout(() => {
+        showSuccess.value = false;
+      }, 2000);
+    }
+    const restoreScroll = snapshotScroll();
+    await loadTasks(true);
+    await nextTick();
+    restoreScroll();
+  } catch (error) {
+    logger.error('习惯任务打卡失败', error);
+    toast.error(getErrorMessage(error, '打卡失败，请重试'));
+  } finally {
+    habitCheckingId.value = null;
+  }
+}
 
 /** 当前提交弹窗是否为「逾期补提交」 */
 const lateSubmitMode = computed(

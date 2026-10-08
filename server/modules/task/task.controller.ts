@@ -23,6 +23,8 @@ import type {
   TaskListQuery,
   CreateHomeworkTaskRequest,
   CreateGoalTaskRequest,
+  CreateHabitTaskRequest,
+  HabitCheckResponse,
   UpdateHomeworkTaskRequest,
   SubmitTaskRequest,
   ReviewTaskRequest,
@@ -284,6 +286,39 @@ class UpdateHomeworkTaskDto implements UpdateHomeworkTaskRequest {
   linkedAllowanceGoal?: boolean;
 }
 
+class CreateHabitTaskDto implements CreateHabitTaskRequest {
+  @IsString()
+  @IsNotEmpty()
+  childId!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  name!: string;
+
+  /** 每次完成奖励积分 */
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  points!: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  allowanceAmount?: number;
+
+  /** 每日次数上限，0/不填=不限 */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  dailyLimit?: number;
+
+  @IsString()
+  @IsNotEmpty()
+  taskDate!: string;
+}
+
 class CreateGoalTaskDto implements CreateGoalTaskRequest {
   @IsString()
   @IsNotEmpty()
@@ -496,6 +531,27 @@ export class TaskController {
   }
 
   @NeedLogin()
+  @Post('habit')
+  async createHabitTask(
+    @Req() req: Request,
+    @Body() dto: CreateHabitTaskDto,
+  ): Promise<{ task: TaskInstance }> {
+    await this.assertChild(req, dto.childId);
+    const task = await this.taskService.createHabitTask(dto, this.creatorOf(req));
+    return { task };
+  }
+
+  /** 习惯任务打卡一次（孩子端） */
+  @Post(':id/habit-check')
+  async checkHabit(
+    @Req() req: Request,
+    @Param('id') id: string,
+  ): Promise<HabitCheckResponse> {
+    const existing = await this.taskService.getTask(id);
+    await this.assertChild(req, existing.childId);
+    return this.taskService.checkHabit(id);
+  }
+
   @Post(':id/goal-progress')
   async addGoalProgress(
     @Req() req: Request,

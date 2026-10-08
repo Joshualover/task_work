@@ -8,6 +8,8 @@ import type {
   TaskListQuery,
   CreateHomeworkTaskRequest,
   CreateGoalTaskRequest,
+  CreateHabitTaskRequest,
+  HabitCheckResponse,
   UpdateHomeworkTaskRequest,
   SubmitTaskRequest,
   ReviewTaskRequest,
@@ -106,6 +108,26 @@ export async function createGoalTask(
   const response = await apiClient.post<{ task: TaskInstance }>(
     '/api/tasks/goal',
     data,
+  );
+  return response.data;
+}
+
+/** 新建习惯任务（按次计算） */
+export async function createHabitTask(
+  body: CreateHabitTaskRequest,
+): Promise<{ task: TaskInstance }> {
+  const response = await apiClient.post<{ task: TaskInstance }>(
+    '/api/tasks/habit',
+    body,
+  );
+  return response.data;
+}
+
+/** 习惯任务打卡一次 */
+export async function checkHabit(id: string): Promise<HabitCheckResponse> {
+  const response = await apiClient.post<HabitCheckResponse>(
+    `/api/tasks/${id}/habit-check`,
+    {},
   );
   return response.data;
 }

@@ -378,6 +378,8 @@ export const taskInstance = pgTable("task_instance", {
   allowanceAmount: integer("allowance_amount").notNull().default(0),
   // 目标型任务是否跟随零花钱余额（true 时进度 = 余额折算的元数）
   linkedAllowanceGoal: boolean("linked_allowance_goal").notNull().default(false),
+  // 习惯任务：今日次数所属日期（跨天自动归零）
+  habitLastDate: date("habit_last_date"),
   // 布置任务的家长（哪个管理员创建的）：id + 昵称快照
   creatorUserId: uuid("creator_user_id"),
   creatorName: varchar("creator_name", { length: 50 }),

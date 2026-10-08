@@ -34,7 +34,7 @@ export interface TaskTemplate {
   createdAt: string;
 }
 
-export type TaskType = 'daily' | 'homework' | 'goal';
+export type TaskType = 'daily' | 'homework' | 'goal' | 'habit';
 export type TaskStatus = 'pending' | 'submitted' | 'completed' | 'overdue' | 'rejected';
 
 export interface TaskInstance {
@@ -68,6 +68,14 @@ export interface TaskInstance {
   allowanceAmount: number;
   /** 目标型任务：进度是否跟随零花钱余额（true 时 currentValue = 余额折算的元数，孩子无需手动记录） */
   linkedAllowanceGoal: boolean;
+  /** 习惯任务：今日已完成次数 */
+  habitCount: number;
+  /** 习惯任务：每日次数上限（0=不限） */
+  habitDailyLimit: number;
+  /** 习惯任务：每次奖励积分 */
+  habitPointsPerTime: number;
+  /** 习惯任务：每次奖励零花钱（分） */
+  habitAllowancePerTime: number;
   /** 布置该任务的家长账号 id */
   creatorUserId: string | null;
   /** 布置该任务的家长昵称（孩子端展示「XX 布置」） */
@@ -327,6 +335,32 @@ export interface CreateGoalTaskRequest {
   deadline?: string;
   extendDays?: number;
   taskDate: string;
+}
+
+/** 新建习惯任务（按次计算） */
+export interface CreateHabitTaskRequest {
+  childId: string;
+  name: string;
+  /** 每次完成奖励积分 */
+  points: number;
+  /** 每次完成奖励零花钱（分），不填=0 */
+  allowanceAmount?: number;
+  /** 每日次数上限，0/不填=不限 */
+  dailyLimit?: number;
+  taskDate: string;
+}
+
+/** 习惯任务打卡结果 */
+export interface HabitCheckResponse {
+  task: TaskInstance;
+  /** 本次发放的积分 */
+  awardedPoints: number;
+  /** 本次发放的零花钱（分） */
+  awardedAllowance: number;
+  /** 今日已完成次数 */
+  count: number;
+  /** 是否已达到每日上限 */
+  reachedDailyLimit: boolean;
 }
 
 /** 目标型任务记录进度 */

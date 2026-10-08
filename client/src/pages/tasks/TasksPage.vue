@@ -59,7 +59,7 @@ const SUBJECT_OPTIONS = [
 ];
 
 interface FormData {
-  taskKind: 'homework' | 'goal';
+  taskKind: 'homework' | 'goal' | 'habit';
   name: string;
   subject: string;
   points: number;
@@ -76,6 +76,8 @@ interface FormData {
   unit: string;
   /** 目标型任务：进度是否跟随零花钱余额（如「存够 100 元」） */
   linkedAllowanceGoal: boolean;
+  /** 习惯任务：每日次数上限（0=不限） */
+  habitDailyLimit: number;
 }
 
 interface SubtaskFormItem {
@@ -134,7 +136,7 @@ const imagePreviews = computed<string[]>(() => uploadedImages.value.map((img) =>
 const expandedTaskIds = ref<Set<string>>(new Set());
 
 // 任务分类筛选（单项 / 多项）与子任务打卡中状态
-const taskCategory = ref<'all' | 'single' | 'multi' | 'goal'>('all');
+const taskCategory = ref<'all' | 'single' | 'multi' | 'goal' | 'habit'>('all');
 const togglingSubtaskIds = ref<Set<string>>(new Set());
 
 const toggleTaskExpand = (taskId: string): void => {
@@ -285,18 +287,22 @@ watch([currentChildId, today], () => {
 
 const visibleTasks = computed<TaskInstance[]>(() => {
   const isGoal = (t: TaskInstance): boolean => t.type === 'goal';
+  const isHabit = (t: TaskInstance): boolean => t.type === 'habit';
   if (taskCategory.value === 'single') {
     return tasks.value.filter(
-      (t: TaskInstance) => !isGoal(t) && !hasTaskSubtasks(t),
+      (t: TaskInstance) => !isGoal(t) && !isHabit(t) && !hasTaskSubtasks(t),
     );
   }
   if (taskCategory.value === 'multi') {
     return tasks.value.filter(
-      (t: TaskInstance) => !isGoal(t) && hasTaskSubtasks(t),
+      (t: TaskInstance) => !isGoal(t) && !isHabit(t) && hasTaskSubtasks(t),
     );
   }
   if (taskCategory.value === 'goal') {
     return tasks.value.filter((t: TaskInstance) => isGoal(t));
+  }
+  if (taskCategory.value === 'habit') {
+    return tasks.value.filter((t: TaskInstance) => isHabit(t));
   }
   return tasks.value;
 });
@@ -307,20 +313,27 @@ const taskCategoryOptions = computed(() => [
     value: 'single' as const,
     label: '单项任务',
     count: tasks.value.filter(
-      (t: TaskInstance) => t.type !== 'goal' && !hasTaskSubtasks(t),
+      (t: TaskInstance) =>
+        t.type !== 'goal' && t.type !== 'habit' && !hasTaskSubtasks(t),
     ).length,
   },
   {
     value: 'multi' as const,
     label: '多项任务',
     count: tasks.value.filter(
-      (t: TaskInstance) => t.type !== 'goal' && hasTaskSubtasks(t),
+      (t: TaskInstance) =>
+        t.type !== 'goal' && t.type !== 'habit' && hasTaskSubtasks(t),
     ).length,
   },
   {
     value: 'goal' as const,
     label: '目标任务',
     count: tasks.value.filter((t: TaskInstance) => t.type === 'goal').length,
+  },
+  {
+    value: 'habit' as const,
+    label: '习惯任务',
+    count: tasks.value.filter((t: TaskInstance) => t.type === 'habit').length,
   },
 ]);
 
@@ -379,6 +392,33 @@ const handleCreateHomework = async (): Promise<void> => {
   const validSubtasks = formSubtasks.filter((st: SubtaskFormItem) => st.content.trim() !== '');
 
   try {
+    // 习惯任务（按次计算）
+    if (formData.taskKind === 'habit') {
+      if (isEditMode.value && editingTaskId.value) {
+        await taskApi.updateTask(editingTaskId.value, {
+          name: formData.name.trim(),
+          points: formData.points,
+          allowanceAmount: yuanToFen(formData.allowanceYuan || 0),
+          targetValue: formData.habitDailyLimit > 0 ? formData.habitDailyLimit : null,
+        });
+      } else {
+        await taskApi.createHabitTask({
+          childId: currentChildId.value,
+          name: formData.name.trim(),
+          points: formData.points,
+          allowanceAmount: yuanToFen(formData.allowanceYuan || 0),
+          dailyLimit: formData.habitDailyLimit,
+          taskDate: formData.taskDate || today.value,
+        });
+      }
+      toast.success(isEditMode.value ? '习惯任务修改成功' : '习惯任务添加成功');
+      dialogOpen.value = false;
+      resetForm();
+      taskCategory.value = 'all';
+      await fetchTasks();
+      return;
+    }
+
     // 目标型任务
     if (formData.taskKind === 'goal') {
       const target = Math.max(1, Math.floor(Number(formData.targetValue) || 0));
@@ -526,6 +566,7 @@ const resetForm = (): void => {
   formData.targetValue = 100;
   formData.unit = '个';
   formData.linkedAllowanceGoal = false;
+  formData.habitDailyLimit = 3;
   formSubtasks.splice(0, formSubtasks.length);
   isEditMode.value = false;
   editingSuggestionId.value = '';
@@ -539,10 +580,12 @@ const openCreateDialog = (): void => {
 
 const openEditTask = (task: TaskInstance): void => {
   const subtasks = getTaskSubtasks(task);
-  formData.taskKind = task.type === 'goal' ? 'goal' : 'homework';
+  formData.taskKind =
+    task.type === 'habit' ? 'habit' : task.type === 'goal' ? 'goal' : 'homework';
   formData.targetValue = task.targetValue ?? 100;
   formData.unit = task.unit ?? '个';
   formData.linkedAllowanceGoal = task.linkedAllowanceGoal === true;
+  formData.habitDailyLimit = task.habitDailyLimit ?? 3;
   formData.name = task.name;
   formData.subject = task.subject ?? '';
   formData.points = task.points;
@@ -1052,6 +1095,15 @@ const removeImage = (index: number): void => {
               >
                 +{{ fenToYuan(task.allowanceAmount) }} 元零花钱
               </Badge>
+              <Badge
+                v-if="task.type === 'habit'"
+                variant="default"
+                class="rounded-full bg-teal-100 text-teal-600 border-transparent"
+              >
+                习惯 · 今日 {{ task.habitCount ?? 0 }}/{{
+                  task.habitDailyLimit > 0 ? task.habitDailyLimit : '∞'
+                }} 次
+              </Badge>
               <span v-if="task.deadline" class="flex items-center gap-1 text-xs text-gray-400">
                 <Clock class="h-3 w-3" />
                 截止 {{ task.deadline }}
@@ -1246,6 +1298,15 @@ const removeImage = (index: number): void => {
               >
                 +{{ fenToYuan(task.allowanceAmount) }} 元零花钱
               </Badge>
+              <Badge
+                v-if="task.type === 'habit'"
+                variant="default"
+                class="rounded-full bg-teal-100 text-teal-600 border-transparent"
+              >
+                习惯 · 今日 {{ task.habitCount ?? 0 }}/{{
+                  task.habitDailyLimit > 0 ? task.habitDailyLimit : '∞'
+                }} 次
+              </Badge>
               <span v-if="task.deadline" class="flex items-center gap-1 text-xs text-gray-400">
                 <Clock class="h-3 w-3" />
                 截止 {{ task.deadline }}
@@ -1439,6 +1500,15 @@ const removeImage = (index: number): void => {
               >
                 +{{ fenToYuan(task.allowanceAmount) }} 元零花钱
               </Badge>
+              <Badge
+                v-if="task.type === 'habit'"
+                variant="default"
+                class="rounded-full bg-teal-100 text-teal-600 border-transparent"
+              >
+                习惯 · 今日 {{ task.habitCount ?? 0 }}/{{
+                  task.habitDailyLimit > 0 ? task.habitDailyLimit : '∞'
+                }} 次
+              </Badge>
               <span v-if="task.deadline" class="flex items-center gap-1 text-xs text-gray-400">
                 <Clock class="h-3 w-3" />
                 截止 {{ task.deadline }}
@@ -1624,6 +1694,15 @@ const removeImage = (index: number): void => {
               >
                 +{{ fenToYuan(task.allowanceAmount) }} 元零花钱
               </Badge>
+              <Badge
+                v-if="task.type === 'habit'"
+                variant="default"
+                class="rounded-full bg-teal-100 text-teal-600 border-transparent"
+              >
+                习惯 · 今日 {{ task.habitCount ?? 0 }}/{{
+                  task.habitDailyLimit > 0 ? task.habitDailyLimit : '∞'
+                }} 次
+              </Badge>
               <span v-if="task.deadline" class="flex items-center gap-1 text-xs text-gray-400">
                 <Clock class="h-3 w-3" />
                 截止 {{ task.deadline }}
@@ -1799,6 +1878,15 @@ const removeImage = (index: number): void => {
               >
                 +{{ fenToYuan(task.allowanceAmount) }} 元零花钱
               </Badge>
+              <Badge
+                v-if="task.type === 'habit'"
+                variant="default"
+                class="rounded-full bg-teal-100 text-teal-600 border-transparent"
+              >
+                习惯 · 今日 {{ task.habitCount ?? 0 }}/{{
+                  task.habitDailyLimit > 0 ? task.habitDailyLimit : '∞'
+                }} 次
+              </Badge>
               <span v-if="task.deadline" class="flex items-center gap-1 text-xs text-gray-400">
                 <Clock class="h-3 w-3" />
                 截止 {{ task.deadline }}
@@ -1884,13 +1972,12 @@ const removeImage = (index: number): void => {
     <Dialog
       v-model:modelValue="dialogOpen"
       :title="
-        isEditMode
-          ? formData.taskKind === 'goal'
-            ? '编辑目标任务'
-            : '编辑作业任务'
-          : formData.taskKind === 'goal'
-            ? '添加目标任务'
-            : '添加作业任务'
+        (isEditMode ? '编辑' : '添加') +
+        (formData.taskKind === 'goal'
+          ? '目标任务'
+          : formData.taskKind === 'habit'
+            ? '习惯任务'
+            : '作业任务')
       "
     >
       <div class="space-y-4 py-2">
@@ -1920,9 +2007,24 @@ const removeImage = (index: number): void => {
           >
             目标任务
           </button>
+          <button
+            type="button"
+            class="flex-1 rounded-full px-4 py-2 text-sm font-medium transition-colors"
+            :class="
+              formData.taskKind === 'habit'
+                ? 'bg-white text-[#FF8A3D] shadow-sm'
+                : 'text-gray-500'
+            "
+            @click="formData.taskKind = 'habit'"
+          >
+            习惯任务
+          </button>
         </div>
         <p v-if="formData.taskKind === 'goal'" class="text-xs text-gray-400">
           达到目标即视为完成（会自动提交待确认，家长审批通过后得分）；可设截止时间，也可不限时间。
+        </p>
+        <p v-else-if="formData.taskKind === 'habit'" class="text-xs text-gray-400">
+          按次计算：孩子每完成一次点一下打卡，<strong>立刻</strong>发放积分 / 零花钱（无需家长审批）；每天次数自动归零。
         </p>
 
         <div class="space-y-2">
@@ -1937,7 +2039,10 @@ const removeImage = (index: number): void => {
           />
         </div>
 
-        <div v-if="formData.taskKind === 'homework'" class="space-y-2">
+        <div
+          v-if="formData.taskKind === 'homework'"
+          class="space-y-2"
+        >
           <Label for="subject" class="text-sm font-medium text-[#1F2329]">
             科目
           </Label>
@@ -1993,9 +2098,25 @@ const removeImage = (index: number): void => {
           </div>
         </div>
 
+        <div v-if="formData.taskKind === 'habit'" class="space-y-2">
+          <Label class="text-sm font-medium text-[#1F2329]">
+            每日次数上限
+          </Label>
+          <Input
+            type="number"
+            :value="String(formData.habitDailyLimit)"
+            @update:value="(v: string | number) => formData.habitDailyLimit = Math.max(0, Math.floor(Number(v) || 0))"
+            placeholder="如 3；填 0 表示不限次数"
+            class="rounded-xl"
+          />
+          <p class="text-xs text-gray-400">
+            下面填写的是<strong>每次</strong>完成的奖励；上限用于防止重复点按
+          </p>
+        </div>
+
         <div class="space-y-2">
           <Label for="points" class="text-sm font-medium text-[#1F2329]">
-            积分
+            {{ formData.taskKind === 'habit' ? '每次积分' : '积分' }}
             <span
               v-if="formData.taskKind === 'homework'"
               class="text-xs text-gray-400 ml-1"
