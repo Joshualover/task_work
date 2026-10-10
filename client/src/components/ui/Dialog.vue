@@ -12,14 +12,14 @@
       <!-- Content -->
       <div
         :class="[
-          'relative z-10 w-full mx-4 bg-white rounded-2xl shadow-xl',
+          'relative z-10 flex max-h-[90vh] w-full mx-4 flex-col overflow-hidden bg-white rounded-2xl shadow-xl',
           maxWidthClass,
         ]"
       >
         <!-- Header -->
         <div
           v-if="title"
-          class="flex items-center justify-between border-b border-orange-100 px-6 py-4"
+          class="flex shrink-0 items-center justify-between border-b border-orange-100 px-6 py-4"
         >
           <h3 class="text-lg font-semibold text-[#1F2329]">{{ title }}</h3>
           <button
@@ -31,13 +31,13 @@
           </button>
         </div>
         <!-- Body -->
-        <div class="px-6 py-4">
+        <div class="flex-1 overflow-y-auto px-6 py-4">
           <slot />
         </div>
         <!-- Footer -->
         <div
           v-if="$slots.footer"
-          class="flex justify-end gap-2 border-t border-orange-100 px-6 py-4"
+          class="flex shrink-0 justify-end gap-2 border-t border-orange-100 px-6 py-4"
         >
           <slot name="footer" />
         </div>

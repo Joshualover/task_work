@@ -223,6 +223,8 @@ const thisWeekPoints = ref<number>(0);
 // 每分钟刷新的"今天"：跨午夜后重新拉取看板数据
 const todayStr = ref<string>(todayString());
 let todayTimer: number | null = null;
+// 防止初始挂载时 watch 与 onMounted 重复请求
+let loadToken = 0;
 
 const greeting = computed(() => {
   const hour = new Date().getHours();
@@ -234,7 +236,10 @@ const greeting = computed(() => {
 });
 
 async function loadDashboard(): Promise<void> {
-  if (!currentChild.value) return;
+  const token = ++loadToken;
+  // 每次进入/切换都重新拉取孩子列表，确保当前积分实时更新
+  await childStore.fetchChildren();
+  if (token !== loadToken || !currentChild.value) return;
 
   try {
     loading.value = true;
@@ -289,11 +294,7 @@ async function loadDashboard(): Promise<void> {
 }
 
 onMounted(() => {
-  if (childStore.children.length === 0) {
-    void childStore.fetchChildren();
-  } else {
-    void loadDashboard();
-  }
+  void loadDashboard();
   todayTimer = window.setInterval(() => {
     const next = todayString();
     if (next !== todayStr.value) {
