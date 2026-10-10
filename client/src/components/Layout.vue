@@ -570,17 +570,48 @@ function toggleNotifications(): void {
   if (next) void fetchNotifications();
 }
 
-async function handleNotificationClick(n: AppNotification): Promise<void> {
-  if (n.isRead) return;
-  try {
-    await notificationApi.markRead(n.id);
-  } catch (error) {
-    logger.error('标记提醒已读失败', error);
-    // 失败不执行乐观更新，保持未读状态，等下次轮询纠正
-    return;
+/** 根据提醒关联的业务类型，映射到需要前往确认的模块 */
+function notificationTarget(n: AppNotification): string | null {
+  switch (n.relatedType) {
+    case 'task':
+      return '/tasks';
+    case 'redemption':
+    case 'reward':
+      return '/redemption';
+    case 'allowance_request':
+    case 'request':
+    case 'manual':
+      return '/allowance';
   }
-  n.isRead = true;
-  unreadCount.value = Math.max(0, unreadCount.value - 1);
+  // 兜底：根据 type 前缀推断
+  if (n.type === 'habit_checkin' || n.type.startsWith('task')) return '/tasks';
+  if (n.type.startsWith('redemption')) return '/redemption';
+  if (n.type.startsWith('allowance')) return '/allowance';
+  return null;
+}
+
+async function handleNotificationClick(n: AppNotification): Promise<void> {
+  // 标记已读不阻塞跳转
+  if (!n.isRead) {
+    try {
+      await notificationApi.markRead(n.id);
+      n.isRead = true;
+      unreadCount.value = Math.max(0, unreadCount.value - 1);
+    } catch (error) {
+      logger.error('标记提醒已读失败', error);
+      // 失败不执行乐观更新，保持未读状态，等下次轮询纠正
+    }
+  }
+
+  // 跳转到对应的确认/处理模块，并定位到具体条目
+  const target = notificationTarget(n);
+  closeDropdowns();
+  if (target) {
+    void router.push({
+      path: target,
+      query: n.relatedId ? { focus: n.relatedId } : {},
+    });
+  }
 }
 
 async function handleMarkAllRead(): Promise<void> {

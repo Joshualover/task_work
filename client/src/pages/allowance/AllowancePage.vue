@@ -66,8 +66,10 @@
       <div class="space-y-2">
         <div
           v-for="r in pendingRequests"
+          :id="'notif-' + r.id"
           :key="r.id"
           class="flex items-center justify-between gap-3 rounded-xl border border-gray-100 p-4"
+          :class="focusId === r.id ? 'ring-2 ring-[#FF8A3D] ring-offset-2' : ''"
         >
           <div class="min-w-0">
             <p class="font-semibold text-[#1F2329]">
@@ -368,6 +370,7 @@ import { toast } from '@/components/ui/toast';
 import { getErrorMessage } from '@/utils/error';
 import { fenToYuan, yuanToFen } from '@/utils/money';
 import { createLatestGuard } from '@/utils/request-guard';
+import { useNotificationFocus } from '@/utils/notificationFocus';
 import { allowanceApi } from '@/api';
 import { useChildStore } from '@/stores/child';
 import type {
@@ -405,6 +408,9 @@ const page = ref<number>(1);
 const pageSize = ref<number>(20);
 const loading = ref<boolean>(false);
 const actionLoading = ref<string | null>(null);
+
+// 从顶部提醒下钻时，定位并高亮对应待审批申请
+const { focusId } = useNotificationFocus(computed(() => !loading.value));
 
 const requestDialogOpen = ref<boolean>(false);
 const requestSubmitting = ref<boolean>(false);

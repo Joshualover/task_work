@@ -38,8 +38,10 @@
       <div v-else class="space-y-3">
         <div
           v-for="item in redemptions"
+          :id="'notif-' + item.id"
           :key="item.id"
           class="flex items-center justify-between rounded-xl border border-gray-100 p-4 transition-colors hover:bg-orange-50/30"
+          :class="focusId === item.id ? 'ring-2 ring-[#FF8A3D] ring-offset-2' : ''"
         >
           <div class="flex items-center gap-4">
             <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-orange-50">
@@ -163,6 +165,7 @@ import Input from '@/components/ui/Input.vue';
 import { redemptionApi } from '@/api';
 import { useChildStore } from '@/stores/child';
 import { createLatestGuard } from '@/utils/request-guard';
+import { useNotificationFocus } from '@/utils/notificationFocus';
 import { toast } from '@/components/ui/toast';
 import type { Redemption, RedemptionStatus } from '@shared/api.interface';
 
@@ -183,6 +186,9 @@ const rejectDialogOpen = ref<boolean>(false);
 const rejectRedemption = ref<Redemption | null>(null);
 const rejectNote = ref<string>('');
 const actionLoading = ref<string | null>(null);
+
+// 从顶部提醒下钻时，定位并高亮对应兑换条目
+const { focusId } = useNotificationFocus(computed(() => !loading.value));
 
 const tabs = computed(() => [
   { key: 'pending' as const, label: '待审核', icon: Clock, color: 'text-[#FF8A3D]' },

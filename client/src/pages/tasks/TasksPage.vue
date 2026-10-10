@@ -22,6 +22,7 @@ import { taskCardStyle } from '@/utils/subject-image';
 import { fenToYuan, yuanToFen } from '@/utils/money';
 import { snapshotScroll } from '@/utils/scroll';
 import { createLatestGuard } from '@/utils/request-guard';
+import { useNotificationFocus } from '@/utils/notificationFocus';
 import { toast } from '@/components/ui/toast';
 import { getErrorMessage } from '@/utils/error';
 import type {
@@ -93,6 +94,9 @@ const childLoading = computed(() => childStore.loading);
 
 const tasks = ref<TaskInstance[]>([]);
 const loading = ref<boolean>(false);
+
+// 从顶部提醒下钻时，定位并高亮对应待确认任务/习惯打卡
+const { focusId } = useNotificationFocus(computed(() => !loading.value));
 const dialogOpen = ref<boolean>(false);
 const formData = reactive<FormData>({
   taskKind: 'homework',
@@ -250,7 +254,7 @@ const fetchTasks = async (silent = false): Promise<void> => {
     });
     if (!isLatest()) return;
     tasks.value = result.items;
-    void fetchHabitCheckins();
+    await fetchHabitCheckins();
   } catch (error) {
     logger.error('获取任务列表失败', error);
   } finally {
@@ -1313,8 +1317,10 @@ const removeImage = (index: number): void => {
         <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           <div
             v-for="checkin in habitCheckins"
+            :id="'notif-' + checkin.taskInstanceId"
             :key="checkin.id"
             class="rounded-2xl bg-white p-4 shadow-md transition-shadow hover:shadow-lg"
+            :class="focusId === checkin.taskInstanceId ? 'ring-2 ring-[#FF8A3D] ring-offset-2' : ''"
           >
             <div class="flex items-start justify-between">
               <div class="flex min-w-0 items-center gap-2">
@@ -1390,9 +1396,11 @@ const removeImage = (index: number): void => {
         <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           <div
             v-for="task in groupedTasks.submitted"
+            :id="'notif-' + task.id"
             :key="task.id"
             :style="taskCardStyle(task)"
             class="rounded-2xl bg-white p-4 shadow-md transition-shadow hover:shadow-lg"
+            :class="focusId === task.id ? 'ring-2 ring-[#FF8A3D] ring-offset-2' : ''"
           >
             <div class="flex items-start justify-between">
               <div class="flex items-center gap-2 flex-1 min-w-0">
