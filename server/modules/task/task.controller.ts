@@ -592,6 +592,7 @@ export class TaskController {
   }
 
   /** 家长：审核习惯打卡（通过后发放奖励） */
+  @NeedLogin()
   @Post('habit-checkins/:id/review')
   async reviewHabitCheckin(
     @Req() req: Request,
@@ -599,13 +600,17 @@ export class TaskController {
     @Body() dto: ReviewHabitCheckinDto,
   ): Promise<{ checkin: HabitCheckin }> {
     const { userId } = req.userContext;
+    // 安全：授权必须先于变更。原实现先调用 reviewHabitCheckin（发积分/零花钱、
+    // 置 checkin 为 approved）再 assertChild，校验失败时事务已提交，
+    // 其他家庭的家长可凭 checkinId 越权审核他人家族的打卡。
+    const existing = await this.taskService.getHabitCheckin(id);
+    await this.assertChild(req, existing.childId);
     const checkin = await this.taskService.reviewHabitCheckin(
       id,
       dto.approved,
       dto.rejectReason,
       userId,
     );
-    await this.assertChild(req, checkin.childId);
     return { checkin };
   }
 
@@ -672,6 +677,7 @@ export class TaskController {
     return this.taskService.batchSubmitTasks(dto.taskIds, dto.completionNote);
   }
 
+  @NeedLogin()
   @Post('batch-review')
   async batchReviewTasks(
     @Req() req: Request,

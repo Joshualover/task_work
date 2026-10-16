@@ -886,6 +886,27 @@ export class TaskService {
     });
   }
 
+  /**
+   * 读取单条习惯打卡的最小信息。
+   * 供控制器在「审核」这类写操作之前先校验家庭归属（授权必须先于变更）。
+   */
+  async getHabitCheckin(
+    checkinId: string,
+  ): Promise<{ id: string; childId: string; status: string }> {
+    const [row] = await this.db
+      .select({
+        id: habitCheckin.id,
+        childId: habitCheckin.childId,
+        status: habitCheckin.status,
+      })
+      .from(habitCheckin)
+      .where(eq(habitCheckin.id, checkinId))
+      .limit(1);
+
+    if (!row) throw new NotFoundException('打卡记录不存在');
+    return row;
+  }
+
   /** 习惯打卡待确认列表（家长端） */
   async listHabitCheckins(
     childId: string,
