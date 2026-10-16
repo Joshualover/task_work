@@ -650,7 +650,15 @@ import Label from '@/components/ui/Label.vue';
 import Select from '@/components/ui/Select.vue';
 import { toast } from '@/components/ui/toast';
 import { getErrorMessage } from '@/utils/error';
-import type { TaskInstance, TaskStatus, TaskType, HomeworkSubtask, HomeworkSuggestion } from '@shared/api.interface';
+import type { TaskInstance, TaskStatus, HomeworkSubtask, HomeworkSuggestion } from '@shared/api.interface';
+import {
+  TASK_CATEGORIES,
+  GROUP_MODE_OPTIONS as groupModeOptions,
+  buildTaskGroups,
+  taskCategoryLabel,
+  taskCategoryBadgeClass,
+  type GroupMode,
+} from '@shared/task-groups';
 
 const STATUS_CONFIG: Record<TaskStatus, { label: string; color: string; bg: string }> = {
   pending: { label: '待完成', color: 'text-yellow-600', bg: 'bg-yellow-100' },
@@ -714,74 +722,8 @@ const sortedTasks = computed(() => [
   ...todayTasks.value,
 ]);
 
-/** 任务分类定义（数组顺序即页面分组顺序） */
-type TaskCategoryKey = 'daily' | 'homework' | 'habit' | 'goal';
-const TASK_CATEGORIES: Array<{
-  key: TaskCategoryKey;
-  label: string;
-  emoji: string;
-}> = [
-  { key: 'daily', label: '必要任务', emoji: '📌' },
-  { key: 'homework', label: '作业任务', emoji: '📚' },
-  { key: 'habit', label: '习惯任务', emoji: '🔁' },
-  { key: 'goal', label: '目标型任务', emoji: '🎯' },
-];
-
-/** 卡片类型徽标文案：与分组标题共用同一份定义，避免两处漂移 */
-function taskCategoryLabel(type: TaskType): string {
-  return TASK_CATEGORIES.find((c) => c.key === type)?.label ?? '作业任务';
-}
-
-/** 卡片类型徽标配色（与分组 emoji 语义一致） */
-function taskCategoryBadgeClass(type: TaskType): string {
-  if (type === 'daily') return 'bg-orange-100 text-orange-600';
-  if (type === 'habit') return 'bg-green-100 text-green-600';
-  if (type === 'goal') return 'bg-purple-100 text-purple-600';
-  return 'bg-blue-100 text-blue-600';
-}
-
 /** 分组方式：按任务类型 / 按完成情况 */
-type GroupMode = 'type' | 'progress';
 const groupMode = ref<GroupMode>('type');
-const groupModeOptions: Array<{ value: string; label: string }> = [
-  { value: 'type', label: '按任务类型' },
-  { value: 'progress', label: '按完成情况' },
-];
-
-/**
- * 完成程度分档（数组顺序即分组顺序）。
- * 中间态 submitted（孩子已提交、等家长审核）单独成档——对孩子来说「交了」和
- * 「家长已确认」是两回事，混在一起会让人以为积分已到账。
- */
-const PROGRESS_BUCKETS: Array<{
-  key: string;
-  label: string;
-  emoji: string;
-  statuses: TaskStatus[];
-  hint: string;
-}> = [
-  {
-    key: 'todo',
-    label: '未完成',
-    emoji: '⏳',
-    statuses: ['pending', 'overdue', 'rejected'],
-    hint: '待完成 / 已逾期 / 已驳回',
-  },
-  {
-    key: 'reviewing',
-    label: '待家长确认',
-    emoji: '📮',
-    statuses: ['submitted'],
-    hint: '已提交，等家长确认后发积分',
-  },
-  {
-    key: 'done',
-    label: '已完成',
-    emoji: '✅',
-    statuses: ['completed'],
-    hint: '家长已确认，积分已到账',
-  },
-];
 
 /** 当前类型筛选：'all' 或某个任务类型 */
 const categoryFilter = ref<string>('all');
@@ -802,60 +744,12 @@ const categoryOptions = computed(() => {
   return options;
 });
 
-/**
- * 统一的「全部分组」：两种分组方式产出同一种结构，模板无需分支。
- * 类型筛选在两种方式下都先生效（先缩小任务集，再分组）。
- * 组内沿用 sortedTasks 的「逾期优先」顺序。
- */
-const allGroups = computed<
-  Array<{
-    key: string;
-    label: string;
-    emoji: string;
-    tasks: TaskInstance[];
-    metaText: string;
-  }>
->(() => {
-  const tasks =
-    categoryFilter.value === 'all'
-      ? sortedTasks.value
-      : sortedTasks.value.filter(
-          (t: TaskInstance) => t.type === categoryFilter.value,
-        );
-
-  if (groupMode.value === 'progress') {
-    return PROGRESS_BUCKETS.map((b) => {
-      const items = tasks.filter((t: TaskInstance) =>
-        b.statuses.includes(t.status),
-      );
-      return {
-        key: b.key,
-        label: b.label,
-        emoji: b.emoji,
-        tasks: items,
-        metaText: b.hint,
-      };
-    });
-  }
-
-  return TASK_CATEGORIES.map((c) => {
-    const items = tasks.filter((t: TaskInstance) => t.type === c.key);
-    const done = items.filter(
-      (t: TaskInstance) => t.status === 'completed',
-    ).length;
-    return {
-      key: c.key,
-      label: c.label,
-      emoji: c.emoji,
-      tasks: items,
-      metaText: `${done}/${items.length} 完成`,
-    };
-  });
-});
-
-/** 实际渲染的分组（空分组不渲染） */
+/** 要渲染的分组（分组规则见 @shared/task-groups，与回归脚本共用同一份定义） */
 const visibleGroups = computed(() =>
-  allGroups.value.filter((g) => g.tasks.length > 0),
+  buildTaskGroups(sortedTasks.value, {
+    mode: groupMode.value,
+    category: categoryFilter.value,
+  }),
 );
 
 // 所选分类已无任务时回落到「全部」，避免出现空白列表
