@@ -104,8 +104,15 @@
           </div>
         </div>
 
-        <!-- 分类筛选下拉：按任务类型查看（全部 / 必要 / 作业 / 习惯 / 目标） -->
-        <div class="mb-3 flex items-center gap-2">
+        <!-- 分组方式（按类型 / 按完成情况）+ 类型筛选 -->
+        <div class="mb-3 flex flex-wrap items-center gap-2">
+          <div class="w-40 sm:w-44">
+            <Select
+              v-model="groupMode"
+              :options="groupModeOptions"
+              id="task-group-mode"
+            />
+          </div>
           <div class="w-44 sm:w-52">
             <Select
               v-model="categoryFilter"
@@ -114,7 +121,7 @@
             />
           </div>
           <span class="text-xs text-gray-400">
-            {{ categoryFilter === 'all' ? '按类型筛选任务' : '仅显示所选类型' }}
+            {{ categoryFilter === 'all' ? '筛选任务类型' : '仅显示所选类型' }}
           </span>
         </div>
 
@@ -166,7 +173,7 @@
                 </span>
               </div>
               <span class="text-xs text-gray-400">
-                {{ group.completedCount }}/{{ group.tasks.length }} 完成
+                {{ group.metaText }}
               </span>
             </div>
 
@@ -733,7 +740,50 @@ function taskCategoryBadgeClass(type: TaskType): string {
   return 'bg-blue-100 text-blue-600';
 }
 
-/** 当前分类筛选：'all' 或某个任务类型 */
+/** 分组方式：按任务类型 / 按完成情况 */
+type GroupMode = 'type' | 'progress';
+const groupMode = ref<GroupMode>('type');
+const groupModeOptions: Array<{ value: string; label: string }> = [
+  { value: 'type', label: '按任务类型' },
+  { value: 'progress', label: '按完成情况' },
+];
+
+/**
+ * 完成程度分档（数组顺序即分组顺序）。
+ * 中间态 submitted（孩子已提交、等家长审核）单独成档——对孩子来说「交了」和
+ * 「家长已确认」是两回事，混在一起会让人以为积分已到账。
+ */
+const PROGRESS_BUCKETS: Array<{
+  key: string;
+  label: string;
+  emoji: string;
+  statuses: TaskStatus[];
+  hint: string;
+}> = [
+  {
+    key: 'todo',
+    label: '未完成',
+    emoji: '⏳',
+    statuses: ['pending', 'overdue', 'rejected'],
+    hint: '待完成 / 已逾期 / 已驳回',
+  },
+  {
+    key: 'reviewing',
+    label: '待家长确认',
+    emoji: '📮',
+    statuses: ['submitted'],
+    hint: '已提交，等家长确认后发积分',
+  },
+  {
+    key: 'done',
+    label: '已完成',
+    emoji: '✅',
+    statuses: ['completed'],
+    hint: '家长已确认，积分已到账',
+  },
+];
+
+/** 当前类型筛选：'all' 或某个任务类型 */
 const categoryFilter = ref<string>('all');
 
 /** 下拉选项：全部 + 实际存在的分类（附数量） */
@@ -752,31 +802,60 @@ const categoryOptions = computed(() => {
   return options;
 });
 
-/** 按任务类型分组（组内沿用「逾期优先」顺序） */
-const taskGroups = computed(() =>
-  TASK_CATEGORIES.map((c) => {
-    const items = sortedTasks.value.filter(
-      (t: TaskInstance) => t.type === c.key,
-    );
+/**
+ * 统一的「全部分组」：两种分组方式产出同一种结构，模板无需分支。
+ * 类型筛选在两种方式下都先生效（先缩小任务集，再分组）。
+ * 组内沿用 sortedTasks 的「逾期优先」顺序。
+ */
+const allGroups = computed<
+  Array<{
+    key: string;
+    label: string;
+    emoji: string;
+    tasks: TaskInstance[];
+    metaText: string;
+  }>
+>(() => {
+  const tasks =
+    categoryFilter.value === 'all'
+      ? sortedTasks.value
+      : sortedTasks.value.filter(
+          (t: TaskInstance) => t.type === categoryFilter.value,
+        );
+
+  if (groupMode.value === 'progress') {
+    return PROGRESS_BUCKETS.map((b) => {
+      const items = tasks.filter((t: TaskInstance) =>
+        b.statuses.includes(t.status),
+      );
+      return {
+        key: b.key,
+        label: b.label,
+        emoji: b.emoji,
+        tasks: items,
+        metaText: b.hint,
+      };
+    });
+  }
+
+  return TASK_CATEGORIES.map((c) => {
+    const items = tasks.filter((t: TaskInstance) => t.type === c.key);
+    const done = items.filter(
+      (t: TaskInstance) => t.status === 'completed',
+    ).length;
     return {
       key: c.key,
       label: c.label,
       emoji: c.emoji,
       tasks: items,
-      completedCount: items.filter(
-        (t: TaskInstance) => t.status === 'completed',
-      ).length,
+      metaText: `${done}/${items.length} 完成`,
     };
-  }),
-);
+  });
+});
 
-/** 下拉筛选后实际渲染的分组（空分组不渲染） */
+/** 实际渲染的分组（空分组不渲染） */
 const visibleGroups = computed(() =>
-  taskGroups.value.filter(
-    (g) =>
-      g.tasks.length > 0 &&
-      (categoryFilter.value === 'all' || g.key === categoryFilter.value),
-  ),
+  allGroups.value.filter((g) => g.tasks.length > 0),
 );
 
 // 所选分类已无任务时回落到「全部」，避免出现空白列表
