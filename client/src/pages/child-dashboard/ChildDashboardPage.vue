@@ -86,7 +86,8 @@
         <div class="mb-3 flex items-center justify-between">
           <h2 class="text-xl font-bold text-[#1F2329]">📋 今日任务</h2>
           <div class="flex items-center gap-2">
-            <span class="text-sm text-gray-500">共 {{ todayTasks.length }} 个</span>
+            <!-- 与列表/下拉口径一致：含逾期待提交任务 -->
+            <span class="text-sm text-gray-500">共 {{ sortedTasks.length }} 个</span>
             <button
               v-if="submittableTasks.length > 1"
               type="button"
@@ -101,6 +102,20 @@
               {{ batchMode ? '取消多选' : '多选提交' }}
             </button>
           </div>
+        </div>
+
+        <!-- 分类筛选下拉：按任务类型查看（全部 / 必要 / 作业 / 习惯 / 目标） -->
+        <div class="mb-3 flex items-center gap-2">
+          <div class="w-44 sm:w-52">
+            <Select
+              v-model="categoryFilter"
+              :options="categoryOptions"
+              id="task-category-filter"
+            />
+          </div>
+          <span class="text-xs text-gray-400">
+            {{ categoryFilter === 'all' ? '按类型筛选任务' : '仅显示所选类型' }}
+          </span>
         </div>
 
         <p
@@ -131,310 +146,326 @@
           </p>
           <p class="mt-1 text-sm text-gray-500">继续保持～ 你真棒！</p>
         </div>
-        <div v-else class="space-y-3" data-ai-section-type="card-list">
+        <div v-else class="space-y-6" data-ai-section-type="card-list">
           <div
-            v-for="task in sortedTasks"
-            :key="task.id"
-            :class="[
-              'rounded-2xl p-4 shadow-md transition-all hover:shadow-lg',
-              task.status === 'pending' ? 'bg-white' : 'bg-white/70',
-              batchMode && !canBatchSubmit(task) ? 'opacity-50' : '',
-              batchMode && selectedIds.has(task.id) ? 'ring-2 ring-[#52C41A]' : '',
-            ]"
-            :style="taskCardStyle(task)"
-            @click="handleCardClick(task, $event)"
+            v-for="group in visibleGroups"
+            :key="group.key"
+            class="space-y-3"
           >
-            <!-- 多选提交：勾选栏 -->
-            <div
-              v-if="batchMode"
-              class="mb-2 flex items-center gap-2 border-b border-dashed border-gray-200 pb-2"
-            >
-              <CheckCircle2
-                v-if="selectedIds.has(task.id)"
-                class="h-5 w-5 text-[#52C41A]"
-              />
-              <Circle v-else class="h-5 w-5 text-gray-300" />
-              <span
-                class="text-xs"
-                :class="canBatchSubmit(task) ? 'text-gray-500' : 'text-gray-400'"
-              >
-                {{
-                  canBatchSubmit(task)
-                    ? selectedIds.has(task.id)
-                      ? '已选择，一起提交'
-                      : '点击选择'
-                    : '不可多选（请先完成子任务）'
-                }}
+            <!-- 分组标题：任务类型 + 数量 + 完成度 -->
+            <div class="flex items-center justify-between px-1">
+              <div class="flex items-center gap-2">
+                <span class="text-base">{{ group.emoji }}</span>
+                <h3 class="text-base font-bold text-[#1F2329]">
+                  {{ group.label }}
+                </h3>
+                <span
+                  class="rounded-full bg-orange-50 px-2 py-0.5 text-xs font-medium text-[#FF8A3D]"
+                >
+                  {{ group.tasks.length }}
+                </span>
+              </div>
+              <span class="text-xs text-gray-400">
+                {{ group.completedCount }}/{{ group.tasks.length }} 完成
               </span>
             </div>
-            <div class="flex items-start justify-between gap-3">
-              <div class="flex-1">
-                <div class="flex items-center gap-2">
-                  <h3
-                    :class="[
-                      'text-base font-semibold',
-                      task.status === 'completed'
-                        ? 'text-gray-400 line-through'
-                        : 'text-[#1F2329]',
-                    ]"
-                  >
-                    {{ task.name }}
-                  </h3>
-                </div>
-                <div class="mt-2 flex items-center gap-2 flex-wrap">
-                  <span
-                    :class="[
-                      'rounded-full px-2 py-0.5 text-xs font-medium',
-                      task.type === 'daily'
-                        ? 'bg-orange-100 text-orange-600'
-                        : 'bg-blue-100 text-blue-600',
-                    ]"
-                  >
-                    {{
-                      task.type === 'daily'
-                        ? '必要任务'
-                        : task.type === 'habit'
-                          ? '习惯任务'
-                          : '作业任务'
-                    }}
-                  </span>
-                  <span
-                    :class="[
-                      'rounded-full px-2 py-0.5 text-xs font-medium',
-                      STATUS_CONFIG[task.status].bg,
-                      STATUS_CONFIG[task.status].color,
-                    ]"
-                  >
-                    {{ STATUS_CONFIG[task.status].label }}
-                  </span>
-                  <span
-                    v-if="task.status === 'overdue'"
-                    class="rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-[#FF8A3D]"
-                  >
-                    补提交截止 {{ lateSubmitDeadline(task) }}
-                  </span>
-                  <span
-                    v-if="task.creatorName"
-                    class="flex items-center gap-1 rounded-full bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-600"
-                  >
-                    <User class="h-3 w-3" />
-                    {{ task.creatorName }} 布置
-                  </span>
-                  <button
-                    v-if="hasSubtasks(task.id)"
-                    type="button"
-                    @click="toggleTaskExpand(task.id)"
-                    class="flex items-center gap-1 rounded-full bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-600 transition-colors hover:bg-purple-100"
-                  >
-                    <ListChecks class="h-3 w-3" />
-                    <span>{{ completedSubtaskCount(task.id) }}/{{ getSubtasks(task.id).length }} 子任务</span>
-                    <ChevronDown
-                      v-if="expandedTasks.has(task.id)"
-                      class="h-3 w-3"
-                    />
-                    <ChevronRight v-else class="h-3 w-3" />
-                  </button>
-                </div>
-                <p v-if="task.subject" class="mt-1 text-sm text-gray-500">
-                  科目：{{ task.subject }}
-                </p>
-                <p
-                  v-if="task.type === 'homework' && task.deadline"
-                  class="mt-1 text-xs text-gray-400"
-                >
-                  截止 {{ task.deadline }}
-                  <span v-if="(task.extendDays ?? 0) > 0" class="text-[#FF8A3D]">
-                    （可顺延 {{ task.extendDays }} 天，至 {{ effectiveDeadline(task) }}）
-                  </span>
-                </p>
 
-                <!-- 目标型任务进度 -->
-                <div v-if="task.type === 'goal'" class="mt-2">
-                  <div class="mb-1 flex items-center justify-between text-xs text-gray-500">
-                    <span>
-                      目标进度
-                      <span
-                        v-if="task.linkedAllowanceGoal"
-                        class="ml-1 rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] text-[#52C41A]"
-                      >
-                        跟随零花钱余额
-                      </span>
-                    </span>
-                    <span class="font-semibold text-[#FF8A3D]">
-                      {{ goalProgressLabel(task) }}
-                    </span>
-                  </div>
-                  <div class="h-2.5 w-full overflow-hidden rounded-full bg-gray-100">
-                    <div
-                      class="h-full rounded-full bg-gradient-to-r from-[#FF8A3D] to-[#FFB347] transition-all duration-300"
-                      :style="{ width: goalPercent(task) }"
-                    />
-                  </div>
-                </div>
-
-                <!-- 子任务列表 -->
-                <div
-                  v-if="hasSubtasks(task.id) && expandedTasks.has(task.id)"
-                  class="mt-3 space-y-2 rounded-xl bg-gray-50 p-3"
+            <div
+              v-for="task in group.tasks"
+              :key="task.id"
+              :class="[
+                'rounded-2xl p-4 shadow-md transition-all hover:shadow-lg',
+                task.status === 'pending' ? 'bg-white' : 'bg-white/70',
+                batchMode && !canBatchSubmit(task) ? 'opacity-50' : '',
+                batchMode && selectedIds.has(task.id) ? 'ring-2 ring-[#52C41A]' : '',
+              ]"
+              :style="taskCardStyle(task)"
+              @click="handleCardClick(task, $event)"
+            >
+              <!-- 多选提交：勾选栏 -->
+              <div
+                v-if="batchMode"
+                class="mb-2 flex items-center gap-2 border-b border-dashed border-gray-200 pb-2"
+              >
+                <CheckCircle2
+                  v-if="selectedIds.has(task.id)"
+                  class="h-5 w-5 text-[#52C41A]"
+                />
+                <Circle v-else class="h-5 w-5 text-gray-300" />
+                <span
+                  class="text-xs"
+                  :class="canBatchSubmit(task) ? 'text-gray-500' : 'text-gray-400'"
                 >
-                  <div
-                    v-for="subtask in getSubtasks(task.id)"
-                    :key="subtask.id"
-                    class="flex items-start gap-2"
-                  >
-                    <button
-                      type="button"
-                      @click="handleToggleSubtask(task.id, subtask)"
-                      :disabled="!canToggleSubtask(task) || togglingSubtaskIds.has(subtask.id)"
-                      class="mt-0.5 flex-shrink-0 transition-transform active:scale-90 disabled:cursor-not-allowed"
-                    >
-                      <CheckCircle2
-                        v-if="subtask.isCompleted"
-                        class="h-5 w-5 text-[#52C41A] fill-[#52C41A]/10"
-                      />
-                      <Circle
-                        v-else
-                        class="h-5 w-5 text-gray-300"
-                      />
-                    </button>
-                    <span
+                  {{
+                    canBatchSubmit(task)
+                      ? selectedIds.has(task.id)
+                        ? '已选择，一起提交'
+                        : '点击选择'
+                      : '不可多选（请先完成子任务）'
+                  }}
+                </span>
+              </div>
+              <div class="flex items-start justify-between gap-3">
+                <div class="flex-1">
+                  <div class="flex items-center gap-2">
+                    <h3
                       :class="[
-                        'flex-1 text-sm',
-                        subtask.isCompleted
+                        'text-base font-semibold',
+                        task.status === 'completed'
                           ? 'text-gray-400 line-through'
                           : 'text-[#1F2329]',
                       ]"
                     >
-                      {{ subtask.content }}
-                    </span>
+                      {{ task.name }}
+                    </h3>
                   </div>
-                </div>
-              </div>
-
-              <div class="flex flex-col items-end gap-2">
-                <div class="flex items-center gap-1">
-                  <Star class="h-4 w-4 text-yellow-400 fill-yellow-400" />
-                  <span class="text-lg font-bold text-[#FF8A3D]">
-                    +{{ task.points }}
-                  </span>
-                  <span
-                    v-if="(task.allowanceAmount ?? 0) > 0"
-                    class="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-[#52C41A]"
-                  >
-                    另 +{{ fenToYuan(task.allowanceAmount) }} 元零花钱
-                  </span>
-                </div>
-                <template
-                  v-if="
-                    task.type === 'goal' &&
-                    !task.linkedAllowanceGoal &&
-                    (task.status === 'pending' || task.status === 'overdue')
-                  "
-                >
-                  <button
-                    type="button"
-                    class="rounded-full bg-[#FF8A3D]/10 px-3 py-1.5 text-sm font-medium text-[#FF8A3D] transition-colors hover:bg-[#FF8A3D]/20 disabled:opacity-50"
-                    :disabled="goalSavingId === task.id"
-                    @click="handleGoalProgress(task, 1)"
-                  >
-                    +1
-                  </button>
-                  <button
-                    type="button"
-                    class="flex items-center gap-1 rounded-full bg-gradient-to-r from-[#FF8A3D] to-[#FFB347] px-4 py-1.5 text-sm font-medium text-white shadow-md transition-all active:scale-95 disabled:opacity-50"
-                    :disabled="goalSavingId === task.id"
-                    @click="openGoalDialog(task)"
-                  >
-                    <Plus class="h-4 w-4" />
-                    记录进度
-                  </button>
-                </template>
-                <!-- 习惯任务：打卡一次 -->
-                <template v-if="task.type === 'habit'">
-                  <div class="text-right text-xs text-teal-600">
-                    今日 {{ task.habitCount ?? 0 }}/{{
-                      task.habitDailyLimit > 0 ? task.habitDailyLimit : '∞'
-                    }} 次
+                  <div class="mt-2 flex items-center gap-2 flex-wrap">
                     <span
-                      v-if="task.habitNeedApproval && (task.habitPendingCount ?? 0) > 0"
-                      class="text-[#FF8A3D]"
+                      :class="[
+                        'rounded-full px-2 py-0.5 text-xs font-medium',
+                        taskCategoryBadgeClass(task.type),
+                      ]"
                     >
-                      · 待确认 {{ task.habitPendingCount }}
+                      {{ taskCategoryLabel(task.type) }}
+                    </span>
+                    <span
+                      :class="[
+                        'rounded-full px-2 py-0.5 text-xs font-medium',
+                        STATUS_CONFIG[task.status].bg,
+                        STATUS_CONFIG[task.status].color,
+                      ]"
+                    >
+                      {{ STATUS_CONFIG[task.status].label }}
+                    </span>
+                    <span
+                      v-if="task.status === 'overdue'"
+                      class="rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-[#FF8A3D]"
+                    >
+                      补提交截止 {{ lateSubmitDeadline(task) }}
+                    </span>
+                    <span
+                      v-if="task.creatorName"
+                      class="flex items-center gap-1 rounded-full bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-600"
+                    >
+                      <User class="h-3 w-3" />
+                      {{ task.creatorName }} 布置
+                    </span>
+                    <button
+                      v-if="hasSubtasks(task.id)"
+                      type="button"
+                      @click="toggleTaskExpand(task.id)"
+                      class="flex items-center gap-1 rounded-full bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-600 transition-colors hover:bg-purple-100"
+                    >
+                      <ListChecks class="h-3 w-3" />
+                      <span>{{ completedSubtaskCount(task.id) }}/{{ getSubtasks(task.id).length }} 子任务</span>
+                      <ChevronDown
+                        v-if="expandedTasks.has(task.id)"
+                        class="h-3 w-3"
+                      />
+                      <ChevronRight v-else class="h-3 w-3" />
+                    </button>
+                  </div>
+                  <p v-if="task.subject" class="mt-1 text-sm text-gray-500">
+                    科目：{{ task.subject }}
+                  </p>
+                  <p
+                    v-if="task.type === 'homework' && task.deadline"
+                    class="mt-1 text-xs text-gray-400"
+                  >
+                    截止 {{ task.deadline }}
+                    <span v-if="(task.extendDays ?? 0) > 0" class="text-[#FF8A3D]">
+                      （可顺延 {{ task.extendDays }} 天，至 {{ effectiveDeadline(task) }}）
+                    </span>
+                  </p>
+
+                  <!-- 目标型任务进度 -->
+                  <div v-if="task.type === 'goal'" class="mt-2">
+                    <div class="mb-1 flex items-center justify-between text-xs text-gray-500">
+                      <span>
+                        目标进度
+                        <span
+                          v-if="task.linkedAllowanceGoal"
+                          class="ml-1 rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] text-[#52C41A]"
+                        >
+                          跟随零花钱余额
+                        </span>
+                      </span>
+                      <span class="font-semibold text-[#FF8A3D]">
+                        {{ goalProgressLabel(task) }}
+                      </span>
+                    </div>
+                    <div class="h-2.5 w-full overflow-hidden rounded-full bg-gray-100">
+                      <div
+                        class="h-full rounded-full bg-gradient-to-r from-[#FF8A3D] to-[#FFB347] transition-all duration-300"
+                        :style="{ width: goalPercent(task) }"
+                      />
+                    </div>
+                  </div>
+
+                  <!-- 子任务列表 -->
+                  <div
+                    v-if="hasSubtasks(task.id) && expandedTasks.has(task.id)"
+                    class="mt-3 space-y-2 rounded-xl bg-gray-50 p-3"
+                  >
+                    <div
+                      v-for="subtask in getSubtasks(task.id)"
+                      :key="subtask.id"
+                      class="flex items-start gap-2"
+                    >
+                      <button
+                        type="button"
+                        @click="handleToggleSubtask(task.id, subtask)"
+                        :disabled="!canToggleSubtask(task) || togglingSubtaskIds.has(subtask.id)"
+                        class="mt-0.5 flex-shrink-0 transition-transform active:scale-90 disabled:cursor-not-allowed"
+                      >
+                        <CheckCircle2
+                          v-if="subtask.isCompleted"
+                          class="h-5 w-5 text-[#52C41A] fill-[#52C41A]/10"
+                        />
+                        <Circle
+                          v-else
+                          class="h-5 w-5 text-gray-300"
+                        />
+                      </button>
+                      <span
+                        :class="[
+                          'flex-1 text-sm',
+                          subtask.isCompleted
+                            ? 'text-gray-400 line-through'
+                            : 'text-[#1F2329]',
+                        ]"
+                      >
+                        {{ subtask.content }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="flex flex-col items-end gap-2">
+                  <div class="flex items-center gap-1">
+                    <Star class="h-4 w-4 text-yellow-400 fill-yellow-400" />
+                    <span class="text-lg font-bold text-[#FF8A3D]">
+                      +{{ task.points }}
+                    </span>
+                    <span
+                      v-if="(task.allowanceAmount ?? 0) > 0"
+                      class="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-[#52C41A]"
+                    >
+                      另 +{{ fenToYuan(task.allowanceAmount) }} 元零花钱
                     </span>
                   </div>
-                  <button
-                    type="button"
-                    class="flex items-center gap-1 rounded-full bg-gradient-to-r from-[#36BFFA] to-[#52C41A] px-4 py-1.5 text-sm font-medium text-white shadow-md transition-all active:scale-95 disabled:opacity-50"
-                    :disabled="
-                      habitCheckingId === task.id ||
-                      (task.habitDailyLimit > 0 &&
-                        (task.habitCount ?? 0) >= task.habitDailyLimit)
+                  <template
+                    v-if="
+                      task.type === 'goal' &&
+                      !task.linkedAllowanceGoal &&
+                      (task.status === 'pending' || task.status === 'overdue')
                     "
-                    @click="void handleHabitCheck(task)"
+                  >
+                    <button
+                      type="button"
+                      class="rounded-full bg-[#FF8A3D]/10 px-3 py-1.5 text-sm font-medium text-[#FF8A3D] transition-colors hover:bg-[#FF8A3D]/20 disabled:opacity-50"
+                      :disabled="goalSavingId === task.id"
+                      @click="handleGoalProgress(task, 1)"
+                    >
+                      +1
+                    </button>
+                    <button
+                      type="button"
+                      class="flex items-center gap-1 rounded-full bg-gradient-to-r from-[#FF8A3D] to-[#FFB347] px-4 py-1.5 text-sm font-medium text-white shadow-md transition-all active:scale-95 disabled:opacity-50"
+                      :disabled="goalSavingId === task.id"
+                      @click="openGoalDialog(task)"
+                    >
+                      <Plus class="h-4 w-4" />
+                      记录进度
+                    </button>
+                  </template>
+                  <!-- 习惯任务：打卡一次 -->
+                  <template v-if="task.type === 'habit'">
+                    <div class="text-right text-xs text-teal-600">
+                      今日 {{ task.habitCount ?? 0 }}/{{
+                        task.habitDailyLimit > 0 ? task.habitDailyLimit : '∞'
+                      }} 次
+                      <span
+                        v-if="task.habitNeedApproval && (task.habitPendingCount ?? 0) > 0"
+                        class="text-[#FF8A3D]"
+                      >
+                        · 待确认 {{ task.habitPendingCount }}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      class="flex items-center gap-1 rounded-full bg-gradient-to-r from-[#36BFFA] to-[#52C41A] px-4 py-1.5 text-sm font-medium text-white shadow-md transition-all active:scale-95 disabled:opacity-50"
+                      :disabled="
+                        habitCheckingId === task.id ||
+                        (task.habitDailyLimit > 0 &&
+                          (task.habitCount ?? 0) >= task.habitDailyLimit)
+                      "
+                      @click="void handleHabitCheck(task)"
+                    >
+                      <Check class="h-4 w-4" />
+                      {{
+                        task.habitDailyLimit > 0 &&
+                        (task.habitCount ?? 0) >= task.habitDailyLimit
+                          ? '今日已完成'
+                          : habitCheckingId === task.id
+                            ? '打卡中...'
+                            : task.habitNeedApproval
+                              ? '完成一次（待确认）'
+                              : '完成一次'
+                      }}
+                    </button>
+                    <div class="text-right text-xs text-gray-400">
+                      每次 +{{ task.habitPointsPerTime }} 积分
+                      <span
+                        v-if="(task.habitAllowancePerTime ?? 0) > 0"
+                        class="text-[#52C41A]"
+                      >
+                        · +{{ fenToYuan(task.habitAllowancePerTime) }} 元
+                      </span>
+                      <span v-if="task.habitNeedApproval" class="text-[#FF8A3D]">
+                        · 需家长确认后发放
+                      </span>
+                    </div>
+                  </template>
+                  <button
+                    v-if="(task.status === 'pending' || task.status === 'overdue') && task.type !== 'goal' && task.type !== 'habit'"
+                    type="button"
+                    @click="handleSubmitClick(task)"
+                    :disabled="hasSubtasks(task.id) && !allSubtasksCompleted(task.id)"
+                    :title="hasSubtasks(task.id) && !allSubtasksCompleted(task.id) ? '请先完成所有子任务' : ''"
+                    :class="[
+                      'flex items-center gap-1 rounded-full px-4 py-1.5 text-sm font-medium shadow-md transition-all active:scale-95',
+                      hasSubtasks(task.id) && !allSubtasksCompleted(task.id)
+                        ? 'cursor-not-allowed bg-gray-300 text-gray-500 shadow-none'
+                        : task.status === 'overdue'
+                          ? 'bg-gradient-to-r from-[#FF8A3D] to-[#FFB347] text-white hover:shadow-lg'
+                          : 'bg-gradient-to-r from-[#52C41A] to-[#7BCF4A] text-white hover:shadow-lg',
+                    ]"
                   >
                     <Check class="h-4 w-4" />
-                    {{
-                      task.habitDailyLimit > 0 &&
-                      (task.habitCount ?? 0) >= task.habitDailyLimit
-                        ? '今日已完成'
-                        : habitCheckingId === task.id
-                          ? '打卡中...'
-                          : task.habitNeedApproval
-                            ? '完成一次（待确认）'
-                            : '完成一次'
-                    }}
+                    {{ task.status === 'overdue' ? '申请补提交' : '我完成了' }}
                   </button>
-                  <div class="text-right text-xs text-gray-400">
-                    每次 +{{ task.habitPointsPerTime }} 积分
-                    <span
-                      v-if="(task.habitAllowancePerTime ?? 0) > 0"
-                      class="text-[#52C41A]"
-                    >
-                      · +{{ fenToYuan(task.habitAllowancePerTime) }} 元
-                    </span>
-                    <span v-if="task.habitNeedApproval" class="text-[#FF8A3D]">
-                      · 需家长确认后发放
-                    </span>
-                  </div>
-                </template>
-                <button
-                  v-if="(task.status === 'pending' || task.status === 'overdue') && task.type !== 'goal' && task.type !== 'habit'"
-                  type="button"
-                  @click="handleSubmitClick(task)"
-                  :disabled="hasSubtasks(task.id) && !allSubtasksCompleted(task.id)"
-                  :title="hasSubtasks(task.id) && !allSubtasksCompleted(task.id) ? '请先完成所有子任务' : ''"
-                  :class="[
-                    'flex items-center gap-1 rounded-full px-4 py-1.5 text-sm font-medium shadow-md transition-all active:scale-95',
-                    hasSubtasks(task.id) && !allSubtasksCompleted(task.id)
-                      ? 'cursor-not-allowed bg-gray-300 text-gray-500 shadow-none'
-                      : task.status === 'overdue'
-                        ? 'bg-gradient-to-r from-[#FF8A3D] to-[#FFB347] text-white hover:shadow-lg'
-                        : 'bg-gradient-to-r from-[#52C41A] to-[#7BCF4A] text-white hover:shadow-lg',
-                  ]"
-                >
-                  <Check class="h-4 w-4" />
-                  {{ task.status === 'overdue' ? '申请补提交' : '我完成了' }}
-                </button>
-                <p
-                  v-if="
-                    task.type === 'goal' &&
-                    task.linkedAllowanceGoal &&
-                    (task.status === 'pending' || task.status === 'overdue')
-                  "
-                  class="text-right text-xs text-[#52C41A]"
-                >
-                  进度自动跟随零花钱余额
-                </p>
-                <p
-                  v-else-if="
-                    (task.status === 'pending' || task.status === 'overdue') &&
-                    hasSubtasks(task.id) &&
-                    !allSubtasksCompleted(task.id)
-                  "
-                  class="text-xs text-gray-400"
-                >
-                  请先完成所有子任务
-                </p>
+                  <p
+                    v-if="
+                      task.type === 'goal' &&
+                      task.linkedAllowanceGoal &&
+                      (task.status === 'pending' || task.status === 'overdue')
+                    "
+                    class="text-right text-xs text-[#52C41A]"
+                  >
+                    进度自动跟随零花钱余额
+                  </p>
+                  <p
+                    v-else-if="
+                      (task.status === 'pending' || task.status === 'overdue') &&
+                      hasSubtasks(task.id) &&
+                      !allSubtasksCompleted(task.id)
+                    "
+                    class="text-xs text-gray-400"
+                  >
+                    请先完成所有子任务
+                  </p>
+                </div>
               </div>
             </div>
           </div>
@@ -609,9 +640,10 @@ import Button from '@/components/ui/Button.vue';
 import Textarea from '@/components/ui/Textarea.vue';
 import Input from '@/components/ui/Input.vue';
 import Label from '@/components/ui/Label.vue';
+import Select from '@/components/ui/Select.vue';
 import { toast } from '@/components/ui/toast';
 import { getErrorMessage } from '@/utils/error';
-import type { TaskInstance, TaskStatus, HomeworkSubtask, HomeworkSuggestion } from '@shared/api.interface';
+import type { TaskInstance, TaskStatus, TaskType, HomeworkSubtask, HomeworkSuggestion } from '@shared/api.interface';
 
 const STATUS_CONFIG: Record<TaskStatus, { label: string; color: string; bg: string }> = {
   pending: { label: '待完成', color: 'text-yellow-600', bg: 'bg-yellow-100' },
@@ -674,6 +706,85 @@ const sortedTasks = computed(() => [
   ...overdueTasks.value,
   ...todayTasks.value,
 ]);
+
+/** 任务分类定义（数组顺序即页面分组顺序） */
+type TaskCategoryKey = 'daily' | 'homework' | 'habit' | 'goal';
+const TASK_CATEGORIES: Array<{
+  key: TaskCategoryKey;
+  label: string;
+  emoji: string;
+}> = [
+  { key: 'daily', label: '必要任务', emoji: '📌' },
+  { key: 'homework', label: '作业任务', emoji: '📚' },
+  { key: 'habit', label: '习惯任务', emoji: '🔁' },
+  { key: 'goal', label: '目标型任务', emoji: '🎯' },
+];
+
+/** 卡片类型徽标文案：与分组标题共用同一份定义，避免两处漂移 */
+function taskCategoryLabel(type: TaskType): string {
+  return TASK_CATEGORIES.find((c) => c.key === type)?.label ?? '作业任务';
+}
+
+/** 卡片类型徽标配色（与分组 emoji 语义一致） */
+function taskCategoryBadgeClass(type: TaskType): string {
+  if (type === 'daily') return 'bg-orange-100 text-orange-600';
+  if (type === 'habit') return 'bg-green-100 text-green-600';
+  if (type === 'goal') return 'bg-purple-100 text-purple-600';
+  return 'bg-blue-100 text-blue-600';
+}
+
+/** 当前分类筛选：'all' 或某个任务类型 */
+const categoryFilter = ref<string>('all');
+
+/** 下拉选项：全部 + 实际存在的分类（附数量） */
+const categoryOptions = computed(() => {
+  const options = [
+    { value: 'all', label: `全部任务 (${sortedTasks.value.length})` },
+  ];
+  for (const c of TASK_CATEGORIES) {
+    const count = sortedTasks.value.filter(
+      (t: TaskInstance) => t.type === c.key,
+    ).length;
+    if (count > 0) {
+      options.push({ value: c.key, label: `${c.label} (${count})` });
+    }
+  }
+  return options;
+});
+
+/** 按任务类型分组（组内沿用「逾期优先」顺序） */
+const taskGroups = computed(() =>
+  TASK_CATEGORIES.map((c) => {
+    const items = sortedTasks.value.filter(
+      (t: TaskInstance) => t.type === c.key,
+    );
+    return {
+      key: c.key,
+      label: c.label,
+      emoji: c.emoji,
+      tasks: items,
+      completedCount: items.filter(
+        (t: TaskInstance) => t.status === 'completed',
+      ).length,
+    };
+  }),
+);
+
+/** 下拉筛选后实际渲染的分组（空分组不渲染） */
+const visibleGroups = computed(() =>
+  taskGroups.value.filter(
+    (g) =>
+      g.tasks.length > 0 &&
+      (categoryFilter.value === 'all' || g.key === categoryFilter.value),
+  ),
+);
+
+// 所选分类已无任务时回落到「全部」，避免出现空白列表
+watch(categoryOptions, (options) => {
+  if (!options.some((o) => o.value === categoryFilter.value)) {
+    categoryFilter.value = 'all';
+  }
+});
 
 /** 待完成 / 已逾期 的任务都可以勾选子任务（逾期后仍可补做） */
 /** 补提交截止日（与服务端规则一致）：必要任务=任务日+1 天；作业/目标=截止日+顺延+1 天 */
@@ -755,6 +866,15 @@ const submittableTasks = computed(() =>
   sortedTasks.value.filter((t: TaskInstance) => canBatchSubmit(t)),
 );
 
+/** 当前分类筛选下可见的可提交任务：「全选」只作用于屏幕上看得见的卡片 */
+const visibleSubmittableTasks = computed(() =>
+  categoryFilter.value === 'all'
+    ? submittableTasks.value
+    : submittableTasks.value.filter(
+        (t: TaskInstance) => t.type === categoryFilter.value,
+      ),
+);
+
 const selectedPoints = computed(() =>
   sortedTasks.value
     .filter((t: TaskInstance) => selectedIds.value.has(t.id))
@@ -786,7 +906,9 @@ function handleCardClick(task: TaskInstance, event?: MouseEvent): void {
 }
 
 function selectAllSubmittable(): void {
-  selectedIds.value = new Set(submittableTasks.value.map((t) => t.id));
+  selectedIds.value = new Set(
+    visibleSubmittableTasks.value.map((t) => t.id),
+  );
 }
 
 async function handleBatchSubmit(): Promise<void> {
