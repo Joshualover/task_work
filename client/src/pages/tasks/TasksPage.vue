@@ -996,9 +996,113 @@ const handleImageSelect = (e: Event): void => {
   void processImageFiles(images);
 };
 
+/**
+ * 从 data:/blob: URL 异步取回真正的 File。
+ * 走 fetch 而非另建 File 对象——URL 内容可能是跨域 blob，直接 new File([url]) 会得到
+ * 一个没有字节的假文件，进而产生「有预览、无数据」的坏状态。
+ */
+const fetchImageAsFile = async (url: string, name: string): Promise<File | null> => {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    if (!blob.type.startsWith('image/')) return null;
+    return new File([blob], name, { type: blob.type });
+  } catch (err) {
+    logger.warn('粘贴图片：无法读取 data/blob URL', err as Error);
+    return null;
+  }
+};
+
+/**
+ * 粘贴序号：每次粘贴自增。URL 回落分支要 await fetch，期间用户可能已删掉刚粘的图，
+ * 若不加判定，迟到的那张仍会被 push 回列表，出现「删除了又冒出来」。
+ */
+let pasteSeq = 0;
+
+/**
+ * 统一粘贴入口：图片 tab 的上传区与文字 tab 的输入框都绑到这里。
+ * 非图片内容一律不处理并提示，避免与 textarea 默认粘贴行为冲突。
+ */
+const handlePaste = async (e: ClipboardEvent): Promise<void> => {
+  if (aiRecognizing.value) return;
+  const items = e.clipboardData?.items ? Array.from(e.clipboardData.items) : [];
+
+  // 1) 优先取真实 File（本地截图、截图工具都走这条）
+  const directFiles: File[] = [];
+  for (const item of items) {
+    if (String(item.type ?? '').startsWith('image/')) {
+      const file = item.getAsFile();
+      if (file) directFiles.push(file);
+    }
+  }
+
+  // 2) 回落：从 files 列表取（Windows 复制的图片有时只出现在这里）
+  if (directFiles.length === 0) {
+    for (const file of Array.from(e.clipboardData?.files ?? [])) {
+      if (file.type.startsWith('image/')) directFiles.push(file);
+    }
+  }
+
+  // 3) 再回落：解析 HTML 片段里的 <img>（跨应用复制常带 text/html，且只有 URL）
+  const urls: string[] = [];
+  if (directFiles.length === 0) {
+    const html = e.clipboardData?.getData('text/html') ?? '';
+    for (const m of html.matchAll(/<img[^>]+src\s*=\s*["']([^"']+)["']/gi)) {
+      const url = m[1] ?? '';
+      if (url.startsWith('data:image/') || url.startsWith('blob:')) {
+        urls.push(url);
+        break; // 只取第一张，避免一次粘贴塞入整页所有配图
+      }
+    }
+  }
+
+  const hasText = Boolean(e.clipboardData?.getData('text/plain')?.trim());
+  if (directFiles.length === 0 && urls.length === 0) {
+    // 纯文字粘贴必须放行默认行为，否则用户在文字 tab 里没法正常粘贴文本
+    if (hasText) return;
+    e.preventDefault();
+    toast.error('请粘贴图片内容');
+    return;
+  }
+
+  e.preventDefault();
+  // 从文字 tab 粘图片时自动切到图片 tab，否则用户看不到任何变化
+  if (aiTab.value !== 'image') {
+    aiTab.value = 'image';
+  }
+
+  const seq = ++pasteSeq;
+  await processImageFiles(directFiles);
+
+  for (const [i, url] of urls.entries()) {
+    const file = await fetchImageAsFile(url, `pasted-image-${Date.now()}-${i}`);
+    // fetch 期间又发生了新的粘贴（或用户已删图），本次结果作废
+    if (seq !== pasteSeq) return;
+    if (file) {
+      await processImageFiles([file]);
+    } else {
+      toast.error('无法读取该图片，请改用文件选择');
+    }
+  }
+};
+
 const removeImage = (index: number): void => {
   // 单一数据源，删除即同时移除文件与预览
   uploadedImages.value.splice(index, 1);
+};
+
+/** 拖拽图片进上传区（与粘贴/选择共用同一处理，保证压缩与校验口径一致） */
+const handleImageDrop = (e: DragEvent): void => {
+  if (aiRecognizing.value) return;
+  const files = Array.from(e.dataTransfer?.files ?? []).filter((f) =>
+    f.type.startsWith('image/'),
+  );
+  if (files.length === 0) {
+    toast.error('请拖入图片文件');
+    return;
+  }
+  void processImageFiles(files);
 };
 </script>
 
@@ -2635,9 +2739,10 @@ const removeImage = (index: number): void => {
           </Label>
           <Textarea
             v-model:modelValue="aiTextContent"
-            placeholder="粘贴作业内容，AI 将自动识别并生成任务建议..."
+            placeholder="粘贴作业内容，AI 将自动识别并生成任务建议；也可直接粘贴图片"
             class="rounded-xl min-h-[120px]"
             :rows="6"
+            @paste="handlePaste"
           />
         </div>
 
@@ -2743,12 +2848,20 @@ const removeImage = (index: number): void => {
           <Label class="text-sm font-medium text-[#1F2329]">
             上传作业图片
           </Label>
+          <!-- @paste 必须绑在外层 label：input[type=file] 不是可编辑元素，
+               根本不会派发 paste 事件；label 才是真正可点击/可聚焦的那一块 -->
           <label
-            class="flex flex-col items-center justify-center w-full h-40 rounded-xl border-2 border-dashed border-orange-200 bg-orange-50/30 cursor-pointer hover:border-[#FF8A3D] hover:bg-orange-50 transition-colors"
+            class="flex flex-col items-center justify-center w-full h-40 rounded-xl border-2 border-dashed border-orange-200 bg-orange-50/30 cursor-pointer hover:border-[#FF8A3D] hover:bg-orange-50 transition-colors focus-within:border-[#FF8A3D]"
+            tabindex="0"
+            @paste.prevent="handlePaste"
+            @drop.prevent="handleImageDrop"
+            @dragover.prevent
           >
             <ImageIcon class="h-8 w-8 text-[#FF8A3D] mb-2" />
             <span class="text-sm text-[#1F2329] font-medium">点击选择图片</span>
-            <span class="text-xs text-gray-500 mt-1">支持 JPG、PNG 格式，可多选</span>
+            <span class="text-xs text-gray-500 mt-1">
+              支持 JPG、PNG 格式，可多选；也可直接粘贴或拖入
+            </span>
             <input
               type="file"
               accept="image/*"
