@@ -94,6 +94,12 @@ class CreateTaskTemplateDto implements Omit<CreateTaskTemplateRequest, 'familyId
   @Type(() => Number)
   monthDays?: number[];
 
+  /** 是否每天零点自动派发；不传=true */
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  autoGenerate?: boolean;
+
   @IsOptional()
   @IsNumber()
   @Type(() => Number)
@@ -142,6 +148,11 @@ class UpdateTaskTemplateDto implements UpdateTaskTemplateRequest {
   @IsBoolean()
   @Type(() => Boolean)
   isActive?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  autoGenerate?: boolean;
 
   @IsOptional()
   @IsNumber()

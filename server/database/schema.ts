@@ -425,6 +425,8 @@ export const taskTemplate = pgTable("task_template", {
   defaultPoints: integer("default_points").notNull().default(10),
   isDaily: boolean("is_daily").notNull().default(true),
   isActive: boolean("is_active").notNull().default(true),
+  // 必要任务模板：是否每天零点自动派发任务实例（false=仅手动「生成每日任务」时派发）
+  autoGenerate: boolean("auto_generate").notNull().default(true),
   sortOrder: integer("sort_order").notNull().default(0),
   frequency: varchar("frequency", { length: 20 }).notNull().default('daily'),
   weekDays: integer("week_days").array().default([]),

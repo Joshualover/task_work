@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException, BadRequestException, ConflictException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
 import { eq, and, asc, count, lt, ne, inArray, sql, gte, lte, or } from 'drizzle-orm';
 import type {
@@ -34,13 +34,87 @@ export interface TaskCreator {
 }
 
 @Injectable()
-export class TaskService {
+export class TaskService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(TaskService.name);
 
   constructor(
     @Inject(DRIZZLE_DATABASE) private readonly db: PostgresJsDatabase,
     private readonly notificationService: NotificationService,
   ) {}
+
+  // ==================== 每日自动派发（零点钟声） ====================
+
+  /** 定时器句柄：模块销毁时清理，避免热重载/测试进程泄漏 */
+  private dailyDispatchTimer: ReturnType<typeof setInterval> | null = null;
+  /** 最近一次自动派发的上海日期，用于"日期翻转才执行"判定与重启补跑 */
+  private lastDispatchDate: string | null = null;
+  /** 防重入：上一轮派发未完成时跳过本轮（多实例部署时另有唯一索引兜底） */
+  private dispatchRunning = false;
+
+  /**
+   * 每分钟 tick 检测上海时区日期翻转（零点钟声）。
+   *
+   * 不用 cron 精确表达式而用"日期变了才跑"：进程重启/宕机跨过零点后，
+   * 下一次 tick 会立即补跑当天派发，任务不会整天缺失。
+   * 未引入 @nestjs/schedule，用原生 setInterval 挂在 Nest 生命周期上。
+   */
+  onModuleInit(): void {
+    this.dailyDispatchTimer = setInterval(() => {
+      void this.dispatchDailyTasksIfNewDay();
+    }, 60 * 1000);
+    // 不阻止进程退出
+    this.dailyDispatchTimer.unref?.();
+    // 启动即检查一次：今天还没派发过（如零点时进程不在）则补跑
+    void this.dispatchDailyTasksIfNewDay();
+  }
+
+  onModuleDestroy(): void {
+    if (this.dailyDispatchTimer) {
+      clearInterval(this.dailyDispatchTimer);
+      this.dailyDispatchTimer = null;
+    }
+  }
+
+  private async dispatchDailyTasksIfNewDay(): Promise<void> {
+    const today = todayString();
+    if (this.lastDispatchDate === today || this.dispatchRunning) return;
+    this.dispatchRunning = true;
+    try {
+      await this.autoGenerateForAllChildren(today);
+      // 只有整轮成功才记日期；失败则下一分钟 tick 重试，避免一次失败整天不补
+      this.lastDispatchDate = today;
+    } catch (error) {
+      this.logger.error(`每日自动派发失败（下一分钟重试）: ${String(error)}`);
+    } finally {
+      this.dispatchRunning = false;
+    }
+  }
+
+  /** 为所有活跃孩子派发当天的自动必要任务（单孩子失败不影响其他家庭） */
+  private async autoGenerateForAllChildren(date: string): Promise<void> {
+    const children = await this.db
+      .select({ id: child.id })
+      .from(child)
+      .where(eq(child.isActive, true));
+
+    let generated = 0;
+    for (const c of children) {
+      try {
+        const items = await this.generateDailyTasks(c.id, date, undefined, {
+          autoOnly: true,
+        });
+        generated += items.length;
+      } catch (error) {
+        // 单孩子失败只记日志：一个家庭的数据问题不应阻塞其他家庭派发
+        this.logger.warn(
+          `自动派发失败 childId=${c.id} date=${date}: ${String(error)}`,
+        );
+      }
+    }
+    this.logger.log(
+      `每日自动派发完成 date=${date} 孩子数=${children.length} 任务实例总数=${generated}`,
+    );
+  }
 
   // ==================== 任务模板部分 ====================
 
@@ -62,6 +136,7 @@ export class TaskService {
       monthDays: (row as any).monthDays ?? [],
       allowanceAmount: row.allowanceAmount ?? 0,
       isActive: row.isActive,
+      autoGenerate: (row as any).autoGenerate ?? true,
       sortOrder: row.sortOrder,
       createdAt: row.createdAt.toISOString(),
     }));
@@ -85,6 +160,7 @@ export class TaskService {
         monthDays: data.monthDays ?? [],
         sortOrder: data.sortOrder ?? 0,
         allowanceAmount: Math.max(0, Math.floor(data.allowanceAmount ?? 0)),
+        autoGenerate: data.autoGenerate ?? true,
         creatorUserId: creator?.userId ?? null,
         creatorName: creator?.name ?? null,
       })
@@ -101,6 +177,7 @@ export class TaskService {
       monthDays: (row as any).monthDays ?? [],
       allowanceAmount: row.allowanceAmount ?? 0,
       isActive: row.isActive,
+      autoGenerate: (row as any).autoGenerate ?? true,
       sortOrder: row.sortOrder,
       createdAt: row.createdAt.toISOString(),
     };
@@ -122,6 +199,7 @@ export class TaskService {
     if (data.weekDays !== undefined) (patch as any).weekDays = data.weekDays;
     if (data.monthDays !== undefined) (patch as any).monthDays = data.monthDays;
     if (data.isActive !== undefined) patch.isActive = data.isActive;
+    if (data.autoGenerate !== undefined) patch.autoGenerate = data.autoGenerate;
     if (data.sortOrder !== undefined) patch.sortOrder = data.sortOrder;
 
     if (Object.keys(patch).length === 0) {
@@ -154,6 +232,7 @@ export class TaskService {
       monthDays: (row as any).monthDays ?? [],
       allowanceAmount: row.allowanceAmount ?? 0,
       isActive: row.isActive,
+      autoGenerate: (row as any).autoGenerate ?? true,
       sortOrder: row.sortOrder,
       createdAt: row.createdAt.toISOString(),
     };
@@ -180,6 +259,7 @@ export class TaskService {
     childId: string,
     date: string,
     creator?: TaskCreator,
+    opts?: { autoOnly?: boolean },
   ): Promise<TaskInstance[]> {
     const childRecord = await this.db
       .select({ familyId: child.familyId })
@@ -207,6 +287,8 @@ export class TaskService {
     const dayOfMonth = dateObj.getDate();
 
     const templates = allTemplates.filter((t: any) => {
+      // 自动派发路径：跳过关闭了「自动添加」的模板；手动「生成每日任务」不受此限制
+      if (opts?.autoOnly && t.autoGenerate === false) return false;
       const freq: string = t.frequency ?? 'daily';
       if (freq === 'daily') return t.isDaily === true;
       if (freq === 'weekly') {

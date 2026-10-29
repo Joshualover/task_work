@@ -30,6 +30,8 @@ export interface TaskTemplate {
   weekDays: number[];
   monthDays: number[];
   isActive: boolean;
+  /** 必要任务模板：是否每天零点自动派发（false=仅手动「生成每日任务」时派发） */
+  autoGenerate: boolean;
   sortOrder: number;
   createdAt: string;
 }
@@ -237,6 +239,8 @@ export interface CreateTaskTemplateRequest {
   frequency?: 'daily' | 'weekly' | 'monthly';
   weekDays?: number[];
   monthDays?: number[];
+  /** 不填=true（默认自动派发） */
+  autoGenerate?: boolean;
   sortOrder?: number;
 }
 export interface UpdateTaskTemplateRequest {
@@ -248,6 +252,7 @@ export interface UpdateTaskTemplateRequest {
   weekDays?: number[];
   monthDays?: number[];
   isActive?: boolean;
+  autoGenerate?: boolean;
   sortOrder?: number;
 }
 

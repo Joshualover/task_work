@@ -96,19 +96,39 @@
           </Badge>
         </div>
 
-        <div class="mt-4 flex items-center justify-between border-t border-gray-100 pt-3">
-          <span class="text-xs text-gray-400">
-            排序：{{ template.sortOrder }}
-          </span>
-          <div class="flex items-center gap-2">
-            <span class="text-xs text-gray-500">
-              {{ template.isActive ? '已启用' : '已停用' }}
+        <div class="mt-4 space-y-2 border-t border-gray-100 pt-3">
+          <!-- 自动添加：开启后由服务端每天零点自动派发任务实例，无需手动点「生成每日任务」 -->
+          <div class="flex items-center justify-between">
+            <span
+              class="text-xs text-gray-500"
+              :title="
+                template.autoGenerate
+                  ? '到设定日期自动加入任务池，无需手动生成'
+                  : '不自动加入，需在任务池手动点「生成每日任务」'
+              "
+            >
+              自动添加
             </span>
             <Switch
-              :checked="template.isActive"
-              @update:checked="void handleToggleActive(template)"
-              class="data-[state=checked]:bg-[#52C41A]"
+              :checked="template.autoGenerate"
+              @update:checked="void handleToggleAutoGenerate(template)"
+              class="data-[state=checked]:bg-[#36BFFA]"
             />
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-xs text-gray-400">
+              排序：{{ template.sortOrder }}
+            </span>
+            <div class="flex items-center gap-2">
+              <span class="text-xs text-gray-500">
+                {{ template.isActive ? '已启用' : '已停用' }}
+              </span>
+              <Switch
+                :checked="template.isActive"
+                @update:checked="void handleToggleActive(template)"
+                class="data-[state=checked]:bg-[#52C41A]"
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -242,6 +262,21 @@
             class="rounded-xl"
           />
         </div>
+
+        <!-- 自动添加：开启后每天零点自动派发任务实例，无需手动点「生成每日任务」 -->
+        <div class="flex items-center justify-between rounded-xl bg-gray-50 px-3 py-2.5">
+          <div>
+            <Label class="text-sm font-medium text-[#1F2329]">自动添加</Label>
+            <p class="text-xs text-gray-400">
+              到设定日期自动加入任务池；关闭则需手动点「生成每日任务」
+            </p>
+          </div>
+          <Switch
+            :checked="formData.autoGenerate"
+            @update:checked="formData.autoGenerate = !formData.autoGenerate"
+            class="data-[state=checked]:bg-[#36BFFA]"
+          />
+        </div>
       </div>
 
       <template #footer>
@@ -323,6 +358,8 @@ interface FormData {
   frequency: Frequency;
   weekDays: number[];
   monthDays: number[];
+  /** 每天零点自动派发任务实例 */
+  autoGenerate: boolean;
   sortOrder: number;
 }
 
@@ -357,6 +394,7 @@ const formData = ref<FormData>({
   frequency: 'daily',
   weekDays: [],
   monthDays: [],
+  autoGenerate: true,
   sortOrder: 0,
 });
 const deleteConfirmOpen = ref<boolean>(false);
@@ -420,6 +458,7 @@ function handleOpenCreate(): void {
     frequency: 'daily',
     weekDays: [],
     monthDays: [],
+    autoGenerate: true,
     sortOrder: templates.value.length,
   };
   dialogOpen.value = true;
@@ -438,6 +477,7 @@ function handleOpenEdit(template: TaskTemplate): void {
     frequency: template.frequency ?? 'daily',
     weekDays: template.weekDays ? [...template.weekDays] : [],
     monthDays: template.monthDays ? [...template.monthDays] : [],
+    autoGenerate: template.autoGenerate ?? true,
     sortOrder: template.sortOrder,
   };
   dialogOpen.value = true;
@@ -500,6 +540,7 @@ async function handleSubmit(): Promise<void> {
         frequency: formData.value.frequency,
         weekDays: formData.value.weekDays,
         monthDays: formData.value.monthDays,
+        autoGenerate: formData.value.autoGenerate,
         sortOrder: formData.value.sortOrder,
       };
       await taskApi.updateTemplate(editingTemplate.value.id, updateData);
@@ -512,6 +553,7 @@ async function handleSubmit(): Promise<void> {
         frequency: formData.value.frequency,
         weekDays: formData.value.weekDays,
         monthDays: formData.value.monthDays,
+        autoGenerate: formData.value.autoGenerate,
         sortOrder: formData.value.sortOrder,
         familyId: familyId.value,
       };
@@ -533,6 +575,18 @@ async function handleToggleActive(template: TaskTemplate): Promise<void> {
     void fetchTemplates();
   } catch (error) {
     logger.error('切换模板状态失败', error);
+    toast.error(getErrorMessage(error, '操作失败，请重试'));
+  }
+}
+
+async function handleToggleAutoGenerate(template: TaskTemplate): Promise<void> {
+  try {
+    await taskApi.updateTemplate(template.id, {
+      autoGenerate: !template.autoGenerate,
+    });
+    void fetchTemplates();
+  } catch (error) {
+    logger.error('切换自动添加失败', error);
     toast.error(getErrorMessage(error, '操作失败，请重试'));
   }
 }
