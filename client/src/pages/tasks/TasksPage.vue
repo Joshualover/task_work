@@ -2372,8 +2372,8 @@ const handleImageDrop = (e: DragEvent): void => {
         <div v-if="formData.taskKind === 'goal'" class="space-y-3">
           <label class="flex cursor-pointer items-start gap-3 rounded-xl bg-green-50 p-3">
             <Switch
-              :modelValue="formData.linkedAllowanceGoal"
-              @update:modelValue="(v: boolean) => (formData.linkedAllowanceGoal = v)"
+              :checked="formData.linkedAllowanceGoal"
+              @update:checked="(v: boolean) => (formData.linkedAllowanceGoal = v)"
             />
             <span class="text-sm">
               <span class="font-medium text-[#1F2329]">跟随零花钱余额</span>
@@ -2429,8 +2429,8 @@ const handleImageDrop = (e: DragEvent): void => {
           </p>
           <label class="flex cursor-pointer items-start gap-3 rounded-xl bg-orange-50 p-3">
             <Switch
-              :modelValue="formData.habitNeedApproval"
-              @update:modelValue="(v: boolean) => (formData.habitNeedApproval = v)"
+              :checked="formData.habitNeedApproval"
+              @update:checked="(v: boolean) => (formData.habitNeedApproval = v)"
             />
             <span class="text-sm">
               <span class="font-medium text-[#1F2329]">需家长确认</span>
